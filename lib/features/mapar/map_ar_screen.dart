@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:sliding_up_panel2/sliding_up_panel2.dart';
 import 'package:geolocator/geolocator.dart';
+import 'dart:math' as math;
 
-// ✅ AR IMPORTS RESTAURADOS
+// ✅ AR IMPORTS
 import 'package:ar_flutter_plugin/ar_flutter_plugin.dart';
 import 'package:ar_flutter_plugin/managers/ar_session_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_object_manager.dart';
@@ -26,7 +27,6 @@ class MapArScreen extends StatefulWidget {
 class _MapArScreenState extends State<MapArScreen> {
   GoogleMapController? _gmap;
   
-  // ✅ AR MANAGERS RESTAURADOS
   ARSessionManager? _arSessionManager;
   ARObjectManager? _arObjectManager;
   ARAnchorManager? _arAnchorManager;
@@ -54,13 +54,11 @@ class _MapArScreenState extends State<MapArScreen> {
     super.dispose();
   }
 
-  // ✅ OBTENER UBICACIÓN ACTUAL
+  // ✅ FIX 1: CORRECCIÓN DE locationSettings
   Future<void> _getCurrentLocation() async {
     try {
       _currentPosition = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.best,
-        ),
+        desiredAccuracy: LocationAccuracy.best, // ✅ CAMBIO AQUÍ
       );
       setState(() {});
     } catch (e) {
@@ -68,7 +66,6 @@ class _MapArScreenState extends State<MapArScreen> {
     }
   }
 
-  // ✅ AR INITIALIZATION RESTAURADO
   Future<void> _onARInit(
     ARSessionManager arSessionManager,
     ARObjectManager arObjectManager,
@@ -83,7 +80,6 @@ class _MapArScreenState extends State<MapArScreen> {
         _arError = null;
       });
 
-      // Configuración ARCore/ARKit
       await _arSessionManager!.onInitialize(
         showFeaturePoints: false,
         showPlanes: true,
@@ -96,8 +92,6 @@ class _MapArScreenState extends State<MapArScreen> {
 
       if (mounted) {
         setState(() => _isARInitialized = true);
-        
-        // ✅ COLOCAR ANCLAS EN POIs REALES
         await _placeARAnchors();
       }
     } catch (e) {
@@ -110,13 +104,12 @@ class _MapArScreenState extends State<MapArScreen> {
     }
   }
 
-  // ✅ COLOCAR ANCLAS AR EN COORDENADAS REALES
+  // ✅ FIX 2: CORRECCIÓN DE addAnchorWithWorldPose
   Future<void> _placeARAnchors() async {
     if (_arAnchorManager == null || _currentPosition == null) return;
 
     for (final poi in ArAnchorConfig.poiAnchors) {
       try {
-        // Calcular posición relativa al usuario
         final distance = Geolocator.distanceBetween(
           _currentPosition!.latitude,
           _currentPosition!.longitude,
@@ -131,31 +124,31 @@ class _MapArScreenState extends State<MapArScreen> {
           poi.longitude,
         );
 
-        // Convertir a coordenadas AR (x, y, z)
-        final radians = bearing * (3.14159 / 180);
-        final x = distance * vector.sin(radians);
-        final z = -distance * vector.cos(radians);
+        final radians = bearing * (math.pi / 180);
+        final x = distance * math.sin(radians);
+        final z = -distance * math.cos(radians);
         final y = poi.altitude ?? 0.0;
 
-        // Crear nodo AR
-        final node = ARNode(
-          type: NodeType.webGLB,
-          uri: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
-          scale: vector.Vector3(0.5, 0.5, 0.5),
-          position: vector.Vector3(x, y, z),
-          rotation: vector.Vector4(1, 0, 0, 0),
-        );
-
-        // Crear ancla
+        // ✅ MÉTODO CORRECTO: add() en lugar de addAnchorWithWorldPose()
         final anchor = ARPlaneAnchor(
           transformation: vector.Matrix4.identity()
             ..setTranslation(vector.Vector3(x, y, z)),
         );
 
-        await _arAnchorManager!.addAnchorWithWorldPose(anchor);
-        await _arObjectManager!.addNode(node, planeAnchor: anchor);
+        final addedAnchor = await _arAnchorManager!.addAnchor(anchor); // ✅ CAMBIO AQUÍ
 
-        debugPrint('✅ Ancla AR colocada en: ${poi.name} ($x, $y, $z)');
+        if (addedAnchor != null) {
+          final node = ARNode(
+            type: NodeType.webGLB,
+            uri: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
+            scale: vector.Vector3(0.5, 0.5, 0.5),
+            position: vector.Vector3(x, y, z),
+            rotation: vector.Vector4(1, 0, 0, 0),
+          );
+
+          await _arObjectManager!.addNode(node, planeAnchor:anchor);
+          debugPrint('✅ Ancla AR colocada en: ${poi.name} ($x, $y, $z)');
+        }
       } catch (e) {
         debugPrint('❌ Error colocando ancla ${poi.name}: $e');
       }
@@ -192,7 +185,6 @@ class _MapArScreenState extends State<MapArScreen> {
           polylines: ArAnchorConfig.debugRoute,
         ),
         
-        // Header información
         Positioned(
           top: 40, left: 16, right: 16,
           child: Container(
@@ -211,7 +203,6 @@ class _MapArScreenState extends State<MapArScreen> {
           ),
         ),
         
-        // Botón abrir AR
         Positioned(
           right: 16, bottom: 90,
           child: FloatingActionButton.extended(
@@ -239,7 +230,6 @@ class _MapArScreenState extends State<MapArScreen> {
           ),
           const SizedBox(height: 8),
           
-          // Header panel
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -258,7 +248,6 @@ class _MapArScreenState extends State<MapArScreen> {
           ),
           const Divider(height: 1),
           
-          // ✅ AR VIEW REAL
           Expanded(
             child: _isARInitialized
                 ? _buildARView()
@@ -269,7 +258,6 @@ class _MapArScreenState extends State<MapArScreen> {
     );
   }
 
-  // ✅ AR VIEW RESTAURADO
   Widget _buildARView() {
     return Stack(
       children: [
@@ -278,7 +266,6 @@ class _MapArScreenState extends State<MapArScreen> {
           planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
         ),
         
-        // Error overlay
         if (_arError != null)
           Positioned.fill(
             child: Container(
@@ -296,7 +283,6 @@ class _MapArScreenState extends State<MapArScreen> {
             ),
           ),
         
-        // Instrucciones
         Positioned(
           top: 20,
           left: 20,

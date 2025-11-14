@@ -5,7 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart' as gl;
 import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
-
+import 'package:geolocator/geolocator.dart' as gl;
 /// 🚗 Navegación estilo Google Maps / Yango Pro
 class MapNavigationPage extends StatefulWidget {
   final double destLat;
@@ -235,9 +235,8 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     _routeManager = await map!.annotations.createPolylineAnnotationManager();
 
     _currentPos = await gl.Geolocator.getCurrentPosition(
-      locationSettings: const gl.LocationSettings(
-        accuracy: gl.LocationAccuracy.best,
-      ),
+      desiredAccuracy: gl.LocationAccuracy.best,
+      // timeLimit: const Duration(seconds: 10), // opcional
     );
 
     if (_currentPos != null) {

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' as gl;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
 
-import '../pages/lugares_ueb.dart'; // lugaresUeb + (opcional) nodosUeb, conexionesUeb
+import '../pages/lugares_ueb.dart';
 
 class IndoorNavigationPage extends StatefulWidget {
   const IndoorNavigationPage({super.key});
@@ -19,15 +19,12 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
   mp.PolylineAnnotationManager? _polyMgr;
   mp.PolylineAnnotation? _route;
 
-  // selección de usuario
   String? _origenNombre;
   String? _destinoNombre;
 
-  // datos en vivo
   gl.Position? _pos;
   StreamSubscription<gl.Position>? _posStream;
 
-  // ruta actual en coords (lon,lat) para poder recortarla
   List<mp.Position> _rutaCoords = [];
 
   bool _loading = false;
@@ -49,9 +46,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     super.dispose();
   }
 
-  // ===========================
-  // UI
-  // ===========================
   @override
   Widget build(BuildContext context) {
     final nombres = (lugaresUeb.map((e) => e['nombre'] as String).toList()
@@ -70,7 +64,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
             styleUri: mp.MapboxStyles.MAPBOX_STREETS,
           ),
 
-          // Panel rojo superior con selección y acciones
           SafeArea(
             child: Container(
               margin: const EdgeInsets.all(12),
@@ -89,14 +82,13 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Origen
                   Row(
                     children: [
                       const Icon(Icons.my_location, color: Colors.white),
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: _origenNombre,
+                          value: _origenNombre,
                           isExpanded: true,
                           dropdownColor: Colors.white,
                           decoration: _inpDecoration('Estoy en...'),
@@ -110,14 +102,13 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Destino
                   Row(
                     children: [
                       const Icon(Icons.flag, color: Colors.white),
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: _destinoNombre,
+                          value: _destinoNombre,
                           isExpanded: true,
                           dropdownColor: Colors.white,
                           decoration: _inpDecoration('Quiero ir a...'),
@@ -131,7 +122,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
                   ),
                   const SizedBox(height: 10),
 
-                  // Botones
                   Row(
                     children: [
                       Expanded(
@@ -184,9 +174,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
         ),
       );
 
-  // ===========================
-  // MAPA + POSICIÓN
-  // ===========================
   Future<void> _onMapCreated(mp.MapboxMap map) async {
     _map = map;
 
@@ -210,10 +197,10 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     _polyMgr = await _map!.annotations.createPolylineAnnotationManager();
     _pinManager = await _map!.annotations.createPointAnnotationManager();
 
-    // centra donde estés, o al centro del campus
     try {
-      _pos ??= await gl.Geolocator.getCurrentPosition(
-       locationSettings: const gl.LocationSettings(accuracy: gl.LocationAccuracy.best),
+      // ✅ FIX 3: CORRECCIÓN DE getCurrentPosition
+      _pos = await gl.Geolocator.getCurrentPosition(
+        desiredAccuracy: gl.LocationAccuracy.best, // ✅ CAMBIO AQUÍ
       );
     } catch (_) {}
 
@@ -223,7 +210,7 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     await _map!.flyTo(
       mp.CameraOptions(
         center: mp.Point(coordinates: mp.Position(lon, lat)),
-        zoom: 18.5, // indoor
+        zoom: 18.5,
         pitch: 0,
         bearing: 0,
       ),
@@ -231,23 +218,19 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     );
   }
 
-  // ===========================
-  // POSICIÓN EN TIEMPO REAL
-  // ===========================
+  // ✅ FIX 4: CORRECCIÓN DE getPositionStream
   Future<void> _startPositionStream() async {
     await _ensureLocationPermission();
     await _posStream?.cancel();
 
-    const settings = gl.LocationSettings(
-      accuracy: gl.LocationAccuracy.best,
-      distanceFilter: 2, // indoor = más sensible
-    );
-
-    _posStream = gl.Geolocator.getPositionStream(locationSettings: settings)
-        .listen((gl.Position p) async {
+    _posStream = gl.Geolocator.getPositionStream(
+      locationSettings: gl.LocationSettings(
+        accuracy: gl.LocationAccuracy.best, // antes desiredAccuracy
+        distanceFilter: 2,                  // se mantiene igual
+      ),
+    ).listen((gl.Position p) async {
       _pos = p;
 
-      // seguir usuario si está activo
       if (_followUser && _map != null) {
         try {
           await _map!.easeTo(
@@ -260,7 +243,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
         } catch (_) {}
       }
 
-      // recorte visual de la línea (se acorta mientras caminas)
       await _recortarRutaConPosicionActual();
     });
   }
@@ -274,9 +256,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     }
   }
 
-  // ===========================
-  // RUTA: cálculo + pintado + pines + ajuste de cámara
-  // ===========================
   Future<void> _trazarRuta() async {
     if (_origenNombre == null || _destinoNombre == null) {
       _snack('Elegí origen y destino.');
@@ -297,11 +276,8 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
       final dLat = (destino['lat'] as num).toDouble();
       final dLon = (destino['lon'] as num).toDouble();
 
-      // Pines A y B
       await _mostrarPines(oLat, oLon, dLat, dLon);
 
-      // Si definiste nodosUeb + conexionesUeb en lugares_ueb.dart, usa Dijkstra.
-      // Si no, dibuja línea directa A->B (fallback).
       List<mp.Position> coords;
 
       final hasGraph = (typeofNodos() && typeofConexiones());
@@ -331,21 +307,19 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
         coords = [mp.Position(oLon, oLat), mp.Position(dLon, dLat)];
       }
 
-      // pintar polyline
       await _polyMgr?.deleteAll();
       _route = await _polyMgr!.create(
         mp.PolylineAnnotationOptions(
           geometry: mp.LineString(coordinates: coords),
           lineWidth: 6,
-          lineColor: 0xFFFF3B30, // rojo fuerte
+          lineColor: 0xFFFF3B30,
         ),
       );
       _rutaCoords = coords;
 
-      // AJUSTAR CÁMARA A TODA LA RUTA (auto-centrado real)
       await _fitCameraToPositions(coords, padding: 80);
 
-      _followUser = true; // que empiece siguiendo al usuario
+      _followUser = true;
       _snack('Ruta lista. ¡A caminar! 🔴');
     } catch (e) {
       _snack('Error al trazar ruta: $e');
@@ -399,13 +373,9 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     _snack('Ruta eliminada.');
   }
 
-  // ===========================
-  // RECORTAR LÍNEA SEGÚN POSICIÓN
-  // ===========================
   Future<void> _recortarRutaConPosicionActual() async {
     if (_pos == null || _rutaCoords.length < 2 || _route == null) return;
 
-    // si ya estás muy cerca del destino, finaliza
     final last = _rutaCoords.last;
     final distFin = _dist(_pos!.latitude, _pos!.longitude, last.lat.toDouble(), last.lng.toDouble());
     if (distFin < 5) {
@@ -414,10 +384,8 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
       return;
     }
 
-    // reemplaza el primer punto por tu posición actual para que la línea se acorte
     _rutaCoords[0] = mp.Position(_pos!.longitude, _pos!.latitude);
 
-    // elimina vértices "consumidos"
     while (_rutaCoords.length > 2) {
       final next = _rutaCoords[1];
       final dNext = _dist(_pos!.latitude, _pos!.longitude, next.lat.toDouble(), next.lng.toDouble());
@@ -428,17 +396,12 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
       }
     }
 
-    // actualizar polyline
     await _polyMgr?.update(_route!..geometry = mp.LineString(coordinates: _rutaCoords));
   }
 
-  // ===========================
-  // AJUSTE DE CÁMARA A BOUNDS
-  // ===========================
   Future<void> _fitCameraToPositions(List<mp.Position> coords, {double padding = 60}) async {
     if (_map == null || coords.isEmpty) return;
 
-    // bounds
     double minLat = coords.first.lat.toDouble();
     double maxLat = coords.first.lat.toDouble();
     double minLon = coords.first.lng.toDouble();
@@ -456,7 +419,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     final centerLat = (minLat + maxLat) / 2;
     final centerLon = (minLon + maxLon) / 2;
 
-    // zoom heurístico según la extensión del recorrido
     final latSpan = (maxLat - minLat).abs();
     final lonSpan = (maxLon - minLon).abs();
     final span = math.max(latSpan, lonSpan);
@@ -473,29 +435,24 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     }
 
     await _map!.flyTo(
-  mp.CameraOptions(
-    center: mp.Point(coordinates: mp.Position(centerLon, centerLat)),
-    zoom: zoom,
-    pitch: 0,
-    bearing: 0,
-    padding: mp.MbxEdgeInsets(
-      top: padding,
-      left: padding,
-      bottom: padding,
-      right: padding,
-    ),
-  ),
-  mp.MapAnimationOptions(duration: 700),
-);
-
+      mp.CameraOptions(
+        center: mp.Point(coordinates: mp.Position(centerLon, centerLat)),
+        zoom: zoom,
+        pitch: 0,
+        bearing: 0,
+        padding: mp.MbxEdgeInsets(
+          top: padding,
+          left: padding,
+          bottom: padding,
+          right: padding,
+        ),
+      ),
+      mp.MapAnimationOptions(duration: 700),
+    );
   }
 
-  // ===========================
-  // UTIL: Dijkstra + distancias
-  // ===========================
   bool typeofNodos() {
     try {
-      // si no están definidos, esto tira
       final _ = nodosUeb;
       return true;
     } catch (_) {
@@ -530,7 +487,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     return bestId!;
   }
 
-  // distancia en metros (Haversine)
   double _dist(double lat1, double lon1, double lat2, double lon2) {
     const R = 6371000.0;
     final dLat = _deg2rad(lat2 - lat1);
@@ -551,7 +507,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     final prev = <String, String?>{};
     final unvisited = <String>{};
 
-    // init
     for (final n in g.keys) {
       dist[n] = double.infinity;
       prev[n] = null;
@@ -560,7 +515,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
     dist[start] = 0;
 
     while (unvisited.isNotEmpty) {
-      // nodo con menor distancia
       String u = unvisited.first;
       for (final x in unvisited) {
         if ((dist[x] ?? double.infinity) < (dist[u] ?? double.infinity)) {
@@ -581,7 +535,6 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
       }
     }
 
-    // reconstruir ruta
     final path = <String>[];
     String? u = goal;
     if ((prev[u] != null) || u == start) {
@@ -606,4 +559,5 @@ class _Edge {
   final double w;
   _Edge(this.v, this.w);
 }
+
 
