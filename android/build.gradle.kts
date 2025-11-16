@@ -1,3 +1,5 @@
+import com.android.build.gradle.BaseExtension
+
 allprojects {
     repositories {
         google()
@@ -17,6 +19,18 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+}
+
+subprojects {
+    if (name == "ar_flutter_plugin") {
+        plugins.withId("com.android.library") {
+            extensions.configure<BaseExtension>("android") {
+                if (namespace.isNullOrBlank()) {
+                    namespace = "com.cariuslars.ar_flutter_plugin"
+                }
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {
