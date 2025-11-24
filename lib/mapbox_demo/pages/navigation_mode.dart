@@ -1,14 +1,13 @@
-
 import 'dart:async';
 import 'dart:convert';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart' as gl;
 import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
 
-import 'ar_view_page.dart';
+// 🔴 IMPORTACIÓN NUEVA PARA AR REAL
+import 'ar_navigation_screen.dart';
 
 /// 🚗 Navegación estilo Google Maps / Yango Pro
 class MapNavigationPage extends StatefulWidget {
@@ -172,45 +171,39 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
               ),
             ),
 
-          // ✅ BOTÓN DE CÁMARA AR EN NAVEGACIÓN (DENTRO DEL STACK)
+          // ✅ BOTÓN DE CÁMARA AR REAL (ACTUALIZADO)
           Positioned(
             right: 20,
-            bottom: 180,
+            bottom: 140,
             child: FloatingActionButton(
               heroTag: "ar_mode_nav",
               backgroundColor: Colors.black,
-              tooltip: "Cámara AR",
+              tooltip: "Cámara AR Real",
               onPressed: () async {
                 try {
-                  final cams = await availableCameras();
-                  if (cams.isEmpty) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('⚠️ No hay cámara disponible')),
-                      );
-                    }
-                    return;
-                  }
-
+                  // 🔴 NAVEGA A LA NUEVA PANTALLA AR REAL
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ARViewPage(
-                        camera: cams.first,
-                        imagePath: 'assets/icons/puntote_rojo_f.png',
-                        titulo: 'Facultad de Tecnología',
+                      builder: (context) => ARNavigationScreen(
+                        destLat: widget.destLat,
+                        destLon: widget.destLon,
+                        destName: widget.destName,
                       ),
                     ),
                   );
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error al abrir la cámara: $e')),
+                      SnackBar(
+                        content: Text('⚠️ Error iniciando AR: $e'),
+                        backgroundColor: Colors.orange,
+                      ),
                     );
                   }
                 }
               },
-              child: const Icon(Icons.camera_alt, color: Colors.white),
+              child: const Icon(Icons.camera_alt, color: Colors.white, size: 28),
             ),
           ),
 
@@ -224,6 +217,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     );
   }
 
+  // ============================================================
+  // 📍 Inicializa ubicación y seguimiento
+  // ============================================================
   Future<void> _initLocation() async {
     await _checkPermisos();
 
@@ -244,6 +240,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     });
   }
 
+  // ============================================================
+  // 🗺️ Configura mapa inicial
+  // ============================================================
   Future<void> _onMapCreated(mp.MapboxMap controller) async {
     map = controller;
 
@@ -273,6 +272,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     setState(() => _loading = false);
   }
 
+  // ============================================================
+  // 🎯 Dibuja ruta y obtiene datos
+  // ============================================================
   Future<void> _dibujarRuta(double destLat, double destLon) async {
     final start = "${_currentPos!.longitude},${_currentPos!.latitude}";
     final end = "$destLon,$destLat";
@@ -336,6 +338,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     }
   }
 
+  // ============================================================
+  // 📡 Cámara sigue al usuario tipo Yango
+  // ============================================================
   Future<void> _centrarCamara(double lat, double lon, {double? heading}) async {
     await map?.setCamera(
       mp.CameraOptions(
@@ -347,6 +352,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     );
   }
 
+  // ============================================================
+  // 🚶 Actualiza progreso
+  // ============================================================
   Future<void> _actualizarProgreso(double destLat, double destLon) async {
     if (_currentPos == null || _route == null || _recalculando) return;
 
@@ -410,4 +418,3 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     }
   }
 }
-
