@@ -5,7 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart' as gl;
 import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
-import 'package:geolocator/geolocator.dart' as gl;
+
 /// 🚗 Navegación estilo Google Maps / Yango Pro
 class MapNavigationPage extends StatefulWidget {
   final double destLat;
@@ -74,7 +74,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                 decoration: BoxDecoration(
                   color: Colors.redAccent,
                   borderRadius: BorderRadius.circular(18),
@@ -156,7 +156,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
                             Navigator.pop(context);
                           },
                           icon:
-                              const Icon(Icons.close, color: Colors.white, size: 22),
+                          const Icon(Icons.close, color: Colors.white, size: 22),
                         ),
                         IconButton(
                           tooltip: "Cambiar modo (Auto / Caminando)",
@@ -194,6 +194,46 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     );
   }
 
+// Botón de Cámara AR en navegación
+Positioned(
+  right: 20,
+  bottom: 180, // Ajustado para quedar sobre los controles inferiores
+  child: FloatingActionButton(
+    heroTag: "ar_mode_nav",
+    backgroundColor: Colors.black,
+    tooltip: "Cámara AR",
+    onPressed: () async {
+      try {
+        final cams = await availableCameras();
+        if (cams.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('⚠️ No hay cámara disponible')),
+          );
+          return;
+        }
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ARViewPage(
+              camera: cams.first,
+              imagePath: 'assets/icons/puntote_rojo_f.png',
+              titulo: 'Facultad de Tecnología',
+            ),
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al abrir la cámara: $e')),
+        );
+      }
+    },
+    child: const Icon(Icons.camera_alt, color: Colors.white),
+  ),
+),
+
+
+
   // ============================================================
   // 📍 Inicializa ubicación y seguimiento
   // ============================================================
@@ -221,6 +261,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
   // ============================================================
   // 🗺️ Configura mapa inicial
   // ============================================================
+  // ============================================================
+  // 🗺️ Configura mapa inicial
+  // ============================================================
   Future<void> _onMapCreated(mp.MapboxMap controller) async {
     map = controller;
 
@@ -234,10 +277,14 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
 
     _routeManager = await map!.annotations.createPolylineAnnotationManager();
 
-    _currentPos = await gl.Geolocator.getCurrentPosition(
-      desiredAccuracy: gl.LocationAccuracy.best,
-      // timeLimit: const Duration(seconds: 10), // opcional
-    );
+    // ✅ FIX DEFINITIVO: API de geolocator 9.0.2
+    try {
+      _currentPos = await gl.Geolocator.getCurrentPosition(
+        desiredAccuracy: gl.LocationAccuracy.best,
+      );
+    } catch (e) {
+      debugPrint("❌ Error obteniendo ubicación: $e");
+    }
 
     if (_currentPos != null) {
       await _dibujarRuta(widget.destLat, widget.destLon);
@@ -259,13 +306,13 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     // 🔥 Precisión + calles reales
     final url = Uri.parse(
       "https://api.mapbox.com/directions/v5/mapbox/$profile/$start;$end"
-      "?geometries=geojson"
-      "&overview=full"
-      "&steps=true"
-      "&annotations=maxspeed,congestion,distance"
-      "&voice_instructions=false"
-      "&banner_instructions=false"
-      "&access_token=$token",
+          "?geometries=geojson"
+          "&overview=full"
+          "&steps=true"
+          "&annotations=maxspeed,congestion,distance"
+          "&voice_instructions=false"
+          "&banner_instructions=false"
+          "&access_token=$token",
     );
 
     try {
@@ -285,7 +332,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
         mp.PolylineAnnotationOptions(
           geometry: mp.LineString(coordinates: puntos),
           lineColor:
-              _isDriving ? 0xFF00B0FF : 0xFF43A047, // 🔵 Azul para auto / 🟢 Verde para caminar
+          _isDriving ? 0xFF00B0FF : 0xFF43A047, // 🔵 Azul para auto / 🟢 Verde para caminar
           lineWidth: 7.5,
         ),
       );

@@ -1,40 +1,39 @@
-
-/*
+// ✅ NUEVO: lib/main.dart
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'features/auth/login_screen.dart';
-import 'features/intro/intro_screen.dart';
-import 'features/mapar/map_ar_screen.dart';
-// import 'package:ubicatec_unificado/main.dart'; // Removed unused import
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 
+import 'mapbox_demo/pages/splash_page.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Cargar .env
+  await dotenv.load(fileName: ".env");
+  
+  // Configurar Mapbox
+  MapboxOptions.setAccessToken(dotenv.env["MAPBOX_ACCESS_TOKEN"]!);
+  
+  // Permisos iniciales
+  await Permission.camera.request();
+  await Permission.locationWhenInUse.request();
+  
   runApp(const UbicatecApp());
 }
 
-final _router = GoRouter(
-  initialLocation: '/login',
-  routes: [
-    GoRoute(path: '/login', builder: (c, s) => const LoginScreen()),
-    GoRoute(path: '/intro', builder: (c, s) => const IntroScreen()),
-    GoRoute(path: '/mapar', builder: (c, s) => const MapArScreen()),
-  ],
-);
-
 class UbicatecApp extends StatelessWidget {
   const UbicatecApp({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'UBICATEC',
+    return MaterialApp(
+      title: 'UBICATEC AR',
       theme: ThemeData(
         colorSchemeSeed: Colors.red,
         useMaterial3: true,
-        appBarTheme: const AppBarTheme(centerTitle: true),
       ),
-      routerConfig: _router,
-      debugShowCheckedModeBanner: false,
+      home: const SplashPage(),
     );
   }
-}*/
+}

@@ -137,7 +137,7 @@ class _HomePageState extends State<HomePage> {
               onPressed: _goToMyLocation,
               backgroundColor: Colors.redAccent,
               child:
-                  const Icon(Icons.my_location, color: Colors.white, size: 28),
+              const Icon(Icons.my_location, color: Colors.white, size: 28),
             ),
           ),
 
@@ -165,45 +165,7 @@ class _HomePageState extends State<HomePage> {
 
           // 🚀 BOTÓN DE REALIDAD AUMENTADA (AR) CORDENADASSSSSS
           // 📍 Aquí defines las coordenadas e imagen que aparecerán al abrir la cámara
-          // 🚀 Botón de Realidad Aumentada (AR)
-Positioned(
-  bottom: 320,
-  right: 20,
-  child: FloatingActionButton(
-    heroTag: "ar_mode",
-    backgroundColor: Colors.black,
-    tooltip: "Modo Realidad Aumentada",
-    onPressed: () async {
-      try {
-        // Verifica cámaras disponibles
-        final cams = await availableCameras();
-        if (cams.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('⚠️ No hay cámara disponible')),
-          );
-          return;
-        }
-
-        // ✅ Abre vista AR directamente (sin coordenadas)
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ARViewPage(
-              camera: cams.first,
-              imagePath: 'assets/icons/puntote_rojo_f.png',
-              titulo: 'Facultad de Tecnología',
-            ),
-          ),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al abrir la cámara: $e')),
-        );
-      }
-    },
-    child: const Icon(Icons.camera_alt, color: Colors.white),
-  ),
-),
+        
 
         ],
       ),
@@ -326,7 +288,7 @@ Positioned(
       mp.CameraOptions(
         center: mp.Point(
           coordinates:
-              mp.Position(lugar['lon'] as double, lugar['lat'] as double),
+          mp.Position(lugar['lon'] as double, lugar['lat'] as double),
         ),
         zoom: 18.0,
         pitch: 45.0,
@@ -369,7 +331,7 @@ Positioned(
     );
 
     _pinManager ??=
-        await mapboxMapController!.annotations.createPointAnnotationManager();
+    await mapboxMapController!.annotations.createPointAnnotationManager();
 
     final bytes = await rootBundle.load('assets/icons/punto_mapa_rojo_f.png');
     final imageData = bytes.buffer.asUint8List();
@@ -403,9 +365,9 @@ Positioned(
     _pinManager?.tapEvents(
       onTap: (mp.PointAnnotation annotation) async {
         final lugar = lugares.firstWhere(
-          (l) =>
-              (l['lat'] as double) ==
-                  annotation.geometry.coordinates.lat.toDouble() &&
+              (l) =>
+          (l['lat'] as double) ==
+              annotation.geometry.coordinates.lat.toDouble() &&
               (l['lon'] as double) ==
                   annotation.geometry.coordinates.lng.toDouble(),
           orElse: () => {'nombre': 'Lugar sin nombre'},
@@ -433,7 +395,7 @@ Positioned(
                 ],
               ),
               content:
-                  const Text("¿Deseas iniciar la navegación hacia este lugar?"),
+              const Text("¿Deseas iniciar la navegación hacia este lugar?"),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -448,9 +410,9 @@ Positioned(
                       MaterialPageRoute(
                         builder: (_) => MapNavigationPage(
                           destLat:
-                              annotation.geometry.coordinates.lat.toDouble(),
+                          annotation.geometry.coordinates.lat.toDouble(),
                           destLon:
-                              annotation.geometry.coordinates.lng.toDouble(),
+                          annotation.geometry.coordinates.lng.toDouble(),
                           destName: lugar['nombre'].toString(),
                         ),
                       ),
@@ -474,6 +436,45 @@ Positioned(
         }
       },
     );
+    // ✅ NUEVO: Botón en home_page.dart
+Positioned(
+  bottom: 240,
+  right: 20,
+  child: FloatingActionButton(
+    heroTag: "ar_navigation",
+    backgroundColor: Colors.deepPurple,
+    tooltip: "Navegación AR 3D",
+    onPressed: () async {
+      // ✅ Verificar permisos
+      final cameraStatus = await Permission.camera.status;
+      final locationStatus = await Permission.locationWhenInUse.status;
+      
+      if (!cameraStatus.isGranted || !locationStatus.isGranted) {
+        await Permission.camera.request();
+        await Permission.locationWhenInUse.request();
+        return;
+      }
+
+      // ✅ Abrir navegación AR 3D
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ArNavigation3D(
+            targetLat: -17.8347233,
+            targetLon: -63.2041646,
+            targetName: 'Facultad de Tecnología',
+            routeWaypoints: [
+              {'lat': -17.8367295, 'lon': -63.2050577}, // Entrada
+              {'lat': -17.8360723, 'lon': -63.2044647}, // Aula Magna
+              {'lat': -17.8347233, 'lon': -63.2041646}, // Destino
+            ],
+          ),
+        ),
+      );
+    },
+    child: const Icon(Icons.explore, color: Colors.white),
+  ),
+),
 
     // ✅ Ajuste automático de cámara al cargar
     if (puntos.isNotEmpty) {

@@ -105,55 +105,49 @@ class _MapArScreenState extends State<MapArScreen> {
   }
 
   // ✅ FIX 2: CORRECCIÓN DE addAnchorWithWorldPose
-  Future<void> _placeARAnchors() async {
-    if (_arAnchorManager == null || _currentPosition == null) return;
+  // ✅ CORREGIDO: lib/features/mapar/map_ar_screen.dart
+Future<void> _placeARAnchors() async {
+  if (_arObjectManager == null || _currentPosition == null) return;
 
-    for (final poi in ArAnchorConfig.poiAnchors) {
-      try {
-        final distance = Geolocator.distanceBetween(
-          _currentPosition!.latitude,
-          _currentPosition!.longitude,
-          poi.latitude,
-          poi.longitude,
-        );
+  for (final poi in ArAnchorConfig.poiAnchors) {
+    try {
+      final distance = Geolocator.distanceBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        poi.latitude,
+        poi.longitude,
+      );
 
-        final bearing = Geolocator.bearingBetween(
-          _currentPosition!.latitude,
-          _currentPosition!.longitude,
-          poi.latitude,
-          poi.longitude,
-        );
+      final bearing = Geolocator.bearingBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        poi.latitude,
+        poi.longitude,
+      );
 
-        final radians = bearing * (math.pi / 180);
-        final x = distance * math.sin(radians);
-        final z = -distance * math.cos(radians);
-        final y = poi.altitude ?? 0.0;
+      final radians = bearing * (math.pi / 180);
+      final x = distance * math.sin(radians);
+      final z = -distance * math.cos(radians);
+      final y = poi.altitude ?? 0.0;
 
-        // ✅ MÉTODO CORRECTO: add() en lugar de addAnchorWithWorldPose()
-        final anchor = ARPlaneAnchor(
-          transformation: vector.Matrix4.identity()
-            ..setTranslation(vector.Vector3(x, y, z)),
-        );
+      // ✅ FIX: Usar ARNode directamente (sin anclas)
+      final node = ARNode(
+        type: NodeType.webGLB,
+        uri: 'https://raw.githubusercontent.com/KhronosGr oup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
+        scale: vector.Vector3(0.5, 0.5, 0.5),
+        position: vector.Vector3(x, y, z),
+        rotation: vector.Vector4(1, 0, 0, 0),
+      );
 
-        final addedAnchor = await _arAnchorManager!.addAnchor(anchor); // ✅ CAMBIO AQUÍ
-
-        if (addedAnchor != null) {
-          final node = ARNode(
-            type: NodeType.webGLB,
-            uri: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
-            scale: vector.Vector3(0.5, 0.5, 0.5),
-            position: vector.Vector3(x, y, z),
-            rotation: vector.Vector4(1, 0, 0, 0),
-          );
-
-          await _arObjectManager!.addNode(node, planeAnchor:anchor);
-          debugPrint('✅ Ancla AR colocada en: ${poi.name} ($x, $y, $z)');
-        }
-      } catch (e) {
-        debugPrint('❌ Error colocando ancla ${poi.name}: $e');
-      }
+      // ✅ Añadir nodo SIN ancla
+      await _arObjectManager!.addNode(node);
+      debugPrint('✅ Nodo AR colocado: ${poi.name} ($x, $y, $z)');
+      
+    } catch (e) {
+      debugPrint('❌ Error colocando nodo ${poi.name}: $e');
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {
