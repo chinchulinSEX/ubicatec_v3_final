@@ -8,9 +8,8 @@ import 'package:geolocator/geolocator.dart' as gl;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
 import 'package:permission_handler/permission_handler.dart';
 
-import '../pages/ar_view_page.dart';
 import 'filtracion.dart';
-import 'lugares_ueb.dart'; // ✅ usamos el archivo central de coordenadas
+import 'lugares_ueb.dart';
 import 'navigation_mode.dart';
 
 class HomePage extends StatefulWidget {
@@ -136,8 +135,7 @@ class _HomePageState extends State<HomePage> {
               heroTag: "my_loc",
               onPressed: _goToMyLocation,
               backgroundColor: Colors.redAccent,
-              child:
-              const Icon(Icons.my_location, color: Colors.white, size: 28),
+              child: const Icon(Icons.my_location, color: Colors.white, size: 28),
             ),
           ),
 
@@ -163,10 +161,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // 🚀 BOTÓN DE REALIDAD AUMENTADA (AR) CORDENADASSSSSS
-          // 📍 Aquí defines las coordenadas e imagen que aparecerán al abrir la cámara
-        
-
+          // ✅ BOTÓN AR ELIMINADO - AHORA SOLO EN navigation_mode.dart
         ],
       ),
 
@@ -185,10 +180,7 @@ class _HomePageState extends State<HomePage> {
               MaterialPageRoute(builder: (context) => const FiltracionPage()),
             );
 
-            // ✅ Mostrar todos los lugares
-            if (lugar != null &&
-                lugar is Map &&
-                lugar["mostrarTodos"] == true) {
+            if (lugar != null && lugar is Map && lugar["mostrarTodos"] == true) {
               for (final p in _pinesCreados) {
                 p.iconOpacity = 1.0;
                 await _pinManager!.update(p);
@@ -197,28 +189,20 @@ class _HomePageState extends State<HomePage> {
               await mapboxMapController?.flyTo(
                 mp.CameraOptions(
                   center: mp.Point(
-                    coordinates: mp.Position(-63.2043, -17.8345), // centro UEB
+                    coordinates: mp.Position(-63.2043, -17.8345),
                   ),
                   zoom: 14.3,
                   pitch: 0,
                 ),
                 mp.MapAnimationOptions(duration: 1500),
               );
-            }
-
-            // 🗺️ “Ir Mapa” → solo muestra pin y centra la cámara
-            else if (lugar != null && lugar is Map && lugar["modo"] == "mapa") {
+            } else if (lugar != null && lugar is Map && lugar["modo"] == "mapa") {
               await _mostrarSoloLugar({
                 "nombre": lugar["nombre"],
                 "lat": lugar["lat"],
                 "lon": lugar["lon"],
               });
-            }
-
-            // 🚶‍♂️ “Ir Navegación” → abre navegación guiada
-            else if (lugar != null &&
-                lugar is Map &&
-                lugar["modo"] == "navegacion") {
+            } else if (lugar != null && lugar is Map && lugar["modo"] == "navegacion") {
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -240,19 +224,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // =====================================================
-  // 📍 Mostrar lugar y navegación
-  // =====================================================
   Future<void> _mostrarSoloLugar(Map<String, dynamic> lugar) async {
     if (_pinManager == null) return;
 
-    // Ocultar pines anteriores
     for (final p in _pinesCreados) {
       p.iconOpacity = 0.0;
       await _pinManager!.update(p);
     }
 
-    // Buscar pin existente o crear uno nuevo
     mp.PointAnnotation? existente;
     for (final p in _pinesCreados) {
       if (p.textField == lugar['nombre']) {
@@ -283,12 +262,10 @@ class _HomePageState extends State<HomePage> {
       await _pinManager!.update(existente);
     }
 
-    // ✅ Solo mover la cámara (sin abrir navegación)
     await mapboxMapController?.flyTo(
       mp.CameraOptions(
         center: mp.Point(
-          coordinates:
-          mp.Position(lugar['lon'] as double, lugar['lat'] as double),
+          coordinates: mp.Position(lugar['lon'] as double, lugar['lat'] as double),
         ),
         zoom: 18.0,
         pitch: 45.0,
@@ -297,9 +274,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // =====================================================
-  // 🎥 Cámara
-  // =====================================================
   Future<void> _initCamera() async {
     await Permission.camera.request();
     final cameras = await availableCameras();
@@ -315,9 +289,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // =====================================================
-  // 🌍 MAPBOX — CONFIGURACIÓN INICIAL Y PUNTOS UBICATEC
-  // =====================================================
   Future<void> _onMapCreated(mp.MapboxMap controller) async {
     mapboxMapController = controller;
     await _checkAndRequestLocationPermission();
@@ -330,15 +301,11 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
-    _pinManager ??=
-    await mapboxMapController!.annotations.createPointAnnotationManager();
+    _pinManager ??= await mapboxMapController!.annotations.createPointAnnotationManager();
 
     final bytes = await rootBundle.load('assets/icons/punto_mapa_rojo_f.png');
     final imageData = bytes.buffer.asUint8List();
-
-    final lugares = lugaresUeb; // ✅ lista centralizada
-
-    // 🧭 Crear pines en el mapa
+    final lugares = lugaresUeb;
     final puntos = <mp.Point>[];
 
     for (final l in lugares) {
@@ -349,7 +316,7 @@ class _HomePageState extends State<HomePage> {
           ),
           image: imageData,
           iconSize: 0.35,
-          textField: "", // ✅ sin texto negro
+          textField: "",
         ),
       );
       _pinesCreados.add(pin);
@@ -358,18 +325,12 @@ class _HomePageState extends State<HomePage> {
       ));
     }
 
-    // =====================================================
-// 🎯 Listener moderno 100% compatible con tu versión
-// =====================================================
-    // 🎯 Listener moderno — iniciar navegación al tocar "Ir"
     _pinManager?.tapEvents(
       onTap: (mp.PointAnnotation annotation) async {
         final lugar = lugares.firstWhere(
-              (l) =>
-          (l['lat'] as double) ==
-              annotation.geometry.coordinates.lat.toDouble() &&
-              (l['lon'] as double) ==
-                  annotation.geometry.coordinates.lng.toDouble(),
+          (l) =>
+              (l['lat'] as double) == annotation.geometry.coordinates.lat.toDouble() &&
+              (l['lon'] as double) == annotation.geometry.coordinates.lng.toDouble(),
           orElse: () => {'nombre': 'Lugar sin nombre'},
         );
 
@@ -377,25 +338,19 @@ class _HomePageState extends State<HomePage> {
           showDialog(
             context: context,
             builder: (_) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
               title: Row(
                 children: [
                   const Text("📍 ", style: TextStyle(fontSize: 22)),
                   Expanded(
                     child: Text(
                       lugar['nombre'],
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 17,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
                     ),
                   ),
                 ],
               ),
-              content:
-              const Text("¿Deseas iniciar la navegación hacia este lugar?"),
+              content: const Text("¿Deseas iniciar la navegación hacia este lugar?"),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -404,15 +359,12 @@ class _HomePageState extends State<HomePage> {
                 ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
-                    // 🚀 Ir directamente a la navegación
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => MapNavigationPage(
-                          destLat:
-                          annotation.geometry.coordinates.lat.toDouble(),
-                          destLon:
-                          annotation.geometry.coordinates.lng.toDouble(),
+                          destLat: annotation.geometry.coordinates.lat.toDouble(),
+                          destLon: annotation.geometry.coordinates.lng.toDouble(),
                           destName: lugar['nombre'].toString(),
                         ),
                       ),
@@ -423,11 +375,8 @@ class _HomePageState extends State<HomePage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
               ],
@@ -436,47 +385,7 @@ class _HomePageState extends State<HomePage> {
         }
       },
     );
-    // ✅ NUEVO: Botón en home_page.dart
-Positioned(
-  bottom: 240,
-  right: 20,
-  child: FloatingActionButton(
-    heroTag: "ar_navigation",
-    backgroundColor: Colors.deepPurple,
-    tooltip: "Navegación AR 3D",
-    onPressed: () async {
-      // ✅ Verificar permisos
-      final cameraStatus = await Permission.camera.status;
-      final locationStatus = await Permission.locationWhenInUse.status;
-      
-      if (!cameraStatus.isGranted || !locationStatus.isGranted) {
-        await Permission.camera.request();
-        await Permission.locationWhenInUse.request();
-        return;
-      }
 
-      // ✅ Abrir navegación AR 3D
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ArNavigation3D(
-            targetLat: -17.8347233,
-            targetLon: -63.2041646,
-            targetName: 'Facultad de Tecnología',
-            routeWaypoints: [
-              {'lat': -17.8367295, 'lon': -63.2050577}, // Entrada
-              {'lat': -17.8360723, 'lon': -63.2044647}, // Aula Magna
-              {'lat': -17.8347233, 'lon': -63.2041646}, // Destino
-            ],
-          ),
-        ),
-      );
-    },
-    child: const Icon(Icons.explore, color: Colors.white),
-  ),
-),
-
-    // ✅ Ajuste automático de cámara al cargar
     if (puntos.isNotEmpty) {
       double minLat = puntos.first.coordinates.lat.toDouble();
       double maxLat = puntos.first.coordinates.lat.toDouble();
@@ -486,7 +395,6 @@ Positioned(
       for (var p in puntos) {
         final lat = p.coordinates.lat.toDouble();
         final lon = p.coordinates.lng.toDouble();
-
         if (lat < minLat) minLat = lat;
         if (lat > maxLat) maxLat = lat;
         if (lon < minLon) minLon = lon;
@@ -507,9 +415,6 @@ Positioned(
     }
   }
 
-  // =====================================================
-  // 🚶‍♂️ POSICIÓN Y PERMISOS
-  // =====================================================
   Future<void> _setupPositionTracking() async {
     await _checkAndRequestLocationPermission();
     userPositionStream?.cancel();
@@ -528,8 +433,7 @@ Positioned(
     await mapboxMapController!.flyTo(
       mp.CameraOptions(
         center: mp.Point(
-          coordinates: mp.Position(
-              currentPosition!.longitude, currentPosition!.latitude),
+          coordinates: mp.Position(currentPosition!.longitude, currentPosition!.latitude),
         ),
         zoom: 17.5,
         pitch: 45.0,
