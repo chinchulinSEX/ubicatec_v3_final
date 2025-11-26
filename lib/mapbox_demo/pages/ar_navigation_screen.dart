@@ -1,4 +1,4 @@
-// ✅ VERSIÓN LIMPIA - SIN MENSAJES MOLESTOS
+// ✅ VERSIÓN LIMPIA - CÁMARA SIEMPRE ACTIVA SIN LOADING
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -47,7 +47,6 @@ class _ARNavigationScreenState extends State<ARNavigationScreen> {
   // Estado de navegación
   String _distanceText = "...";
   String _directionText = "⬆️";
-  bool _arReady = false;
   bool _destinationReached = false;
 
   @override
@@ -133,7 +132,7 @@ class _ARNavigationScreenState extends State<ARNavigationScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // 🎨 INICIALIZACIÓN DE AR (SIN MENSAJES)
+  // 🎨 INICIALIZACIÓN DE AR (SIN LOADING, CÁMARA DIRECTA)
   // ═══════════════════════════════════════════════════════════
   
   Future<void> _onARViewCreated(
@@ -157,10 +156,8 @@ class _ARNavigationScreenState extends State<ARNavigationScreen> {
 
       await _arObjectManager!.onInitialize();
 
-      setState(() => _arReady = true);
-
-      // Colocar flecha automáticamente
-      await _placeARArrow();
+      // Colocar flecha automáticamente (sin setState que cause rebuild)
+      _placeARArrow();
     } catch (e) {
       debugPrint('❌ Error AR: $e');
     }
@@ -201,22 +198,23 @@ class _ARNavigationScreenState extends State<ARNavigationScreen> {
       );
 
       await _arObjectManager!.addNode(arrowNode);
-      debugPrint('✅ Flecha colocada');
+      debugPrint('✅ Flecha colocada en AR');
     } catch (e) {
-      debugPrint('❌ Error flecha: $e');
+      debugPrint('❌ Error colocando flecha: $e');
     }
   }
 
   // ═══════════════════════════════════════════════════════════
-  // 🎨 UI LIMPIA (SIN MENSAJES MOLESTOS)
+  // 🎨 UI - CÁMARA SIEMPRE VISIBLE, SIN LOADING
   // ═══════════════════════════════════════════════════════════
   
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black, // Fondo negro mientras carga AR
       body: Stack(
         children: [
-          // 🎥 VISTA AR DIRECTA (sin loading)
+          // 🎥 CÁMARA AR DIRECTA (SIN LOADING)
           ARView(
             onARViewCreated: _onARViewCreated,
             planeDetectionConfig: PlaneDetectionConfig.horizontal,
