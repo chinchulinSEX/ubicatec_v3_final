@@ -51,9 +51,14 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ FIX: Calcular la altura total del BottomNavigationBar + padding del dispositivo
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bottomNavHeight = kBottomNavigationBarHeight + bottomPadding;
+
     return Scaffold(
       body: Stack(
         children: [
+          // 🗺️ MAPA BASE
           mp.MapWidget(
             onMapCreated: _onMapCreated,
             styleUri: _modoOscuro
@@ -61,7 +66,7 @@ class _HomePageState extends State<HomePage> {
                 : mp.MapboxStyles.MAPBOX_STREETS,
           ),
 
-          // 🎥 Panel cámara
+          // 🎥 PANEL DE CÁMARA
           if (_cameraReady && showCamera)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 200),
@@ -87,6 +92,8 @@ class _HomePageState extends State<HomePage> {
                       ),
                       child: CameraPreview(_controller!),
                     ),
+                    
+                    // 📏 Indicador de arrastre
                     Align(
                       alignment: Alignment.topCenter,
                       child: Container(
@@ -99,6 +106,8 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                     ),
+                    
+                    // ❌ Botón cerrar cámara
                     Positioned(
                       top: 40,
                       right: 20,
@@ -114,38 +123,43 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-          // 📸 Abrir cámara
+          // ✅ BOTONES FLOTANTES (POSICIONADOS ARRIBA DEL BOTTOMNAVIGATIONBAR)
+          
+          // 📸 BOTÓN ABRIR CÁMARA
           if (!showCamera)
             Positioned(
-              bottom: 80,
+              bottom: bottomNavHeight + 10, // ✅ 10px arriba de la barra
               right: 20,
               child: FloatingActionButton(
                 heroTag: "open_cam",
                 backgroundColor: Colors.indigo,
                 onPressed: () => _toggleCamera(true),
-                child: const Icon(Icons.camera_alt, color: Colors.white),
+                tooltip: 'Abrir cámara',
+                child: const Icon(Icons.camera_alt, color: Colors.white, size: 28),
               ),
             ),
 
-          // 📍 Botón de ubicación actual
+          // 📍 BOTÓN MI UBICACIÓN
           Positioned(
-            bottom: 160,
+            bottom: bottomNavHeight + 80, // ✅ 80px arriba de la barra
             right: 20,
             child: FloatingActionButton(
               heroTag: "my_loc",
-              onPressed: _goToMyLocation,
               backgroundColor: Colors.redAccent,
+              onPressed: _goToMyLocation,
+              tooltip: 'Mi ubicación',
               child: const Icon(Icons.my_location, color: Colors.white, size: 28),
             ),
           ),
 
-          // 🌗 Modo día/noche
+          // 🌗 BOTÓN MODO DÍA/NOCHE
           Positioned(
-            bottom: 240,
+            bottom: bottomNavHeight + 150, // ✅ 150px arriba de la barra
             right: 20,
             child: FloatingActionButton(
               heroTag: "toggle_mode",
               backgroundColor: _modoOscuro ? Colors.black87 : Colors.blueAccent,
+              tooltip: _modoOscuro ? 'Modo día' : 'Modo noche',
               onPressed: () async {
                 setState(() => _modoOscuro = !_modoOscuro);
                 await mapboxMapController?.loadStyleURI(
@@ -157,20 +171,21 @@ class _HomePageState extends State<HomePage> {
               child: Icon(
                 _modoOscuro ? Icons.nightlight_round : Icons.wb_sunny,
                 color: Colors.white,
+                size: 26,
               ),
             ),
           ),
-
-          // ✅ BOTÓN AR ELIMINADO - AHORA SOLO EN navigation_mode.dart
         ],
       ),
 
-      // 🔻 Barra inferior
+      // 🔻 BARRA DE NAVEGACIÓN INFERIOR
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: Colors.redAccent,
         selectedItemColor: Colors.white,
         unselectedItemColor: Colors.white70,
         currentIndex: _selectedIndex,
+        type: BottomNavigationBarType.fixed,
+        elevation: 8,
         onTap: (index) async {
           setState(() => _selectedIndex = index);
 
@@ -180,58 +195,76 @@ class _HomePageState extends State<HomePage> {
               MaterialPageRoute(builder: (context) => const FiltracionPage()),
             );
 
-            if (lugar != null && lugar is Map && lugar["mostrarTodos"] == true) {
-              for (final p in _pinesCreados) {
-                p.iconOpacity = 1.0;
-                await _pinManager!.update(p);
-              }
+            if (lugar != null && lugar is Map) {
+              if (lugar["mostrarTodos"] == true) {
+                // Mostrar todos los pines
+                for (final p in _pinesCreados) {
+                  p.iconOpacity = 1.0;
+                  await _pinManager!.update(p);
+                }
 
-              await mapboxMapController?.flyTo(
-                mp.CameraOptions(
-                  center: mp.Point(
-                    coordinates: mp.Position(-63.2043, -17.8345),
+                await mapboxMapController?.flyTo(
+                  mp.CameraOptions(
+                    center: mp.Point(
+                      coordinates: mp.Position(-63.2043, -17.8345),
+                    ),
+                    zoom: 14.3,
+                    pitch: 0,
                   ),
-                  zoom: 14.3,
-                  pitch: 0,
-                ),
-                mp.MapAnimationOptions(duration: 1500),
-              );
-            } else if (lugar != null && lugar is Map && lugar["modo"] == "mapa") {
-              await _mostrarSoloLugar({
-                "nombre": lugar["nombre"],
-                "lat": lugar["lat"],
-                "lon": lugar["lon"],
-              });
-            } else if (lugar != null && lugar is Map && lugar["modo"] == "navegacion") {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MapNavigationPage(
-                    destLat: (lugar["lat"] as num).toDouble(),
-                    destLon: (lugar["lon"] as num).toDouble(),
-                    destName: lugar["nombre"].toString(),
-                  ),
-                ),
-              );
+                  mp.MapAnimationOptions(duration: 1500),
+                );
+              } else if (lugar["modo"] == "mapa") {
+                // Mostrar solo un lugar
+                await _mostrarSoloLugar({
+                  "nombre": lugar["nombre"],
+                  "lat": lugar["lat"],
+                  "lon": lugar["lon"],
+                });
+              } else if (lugar["modo"] == "navegacion") {
+                // Iniciar navegación
+                if (context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MapNavigationPage(
+                        destLat: (lugar["lat"] as num).toDouble(),
+                        destLon: (lugar["lon"] as num).toDouble(),
+                        destName: lugar["nombre"].toString(),
+                      ),
+                    ),
+                  );
+                }
+              }
             }
           }
         },
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: "Mapa"),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: "Buscar"),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map),
+            label: "Mapa",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: "Buscar",
+          ),
         ],
       ),
     );
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 🗺️ MOSTRAR SOLO UN LUGAR EN EL MAPA
+  // ════════════════════════════════════════════════════════════════════════
   Future<void> _mostrarSoloLugar(Map<String, dynamic> lugar) async {
     if (_pinManager == null) return;
 
+    // Ocultar todos los pines
     for (final p in _pinesCreados) {
       p.iconOpacity = 0.0;
       await _pinManager!.update(p);
     }
 
+    // Buscar o crear el pin del lugar seleccionado
     mp.PointAnnotation? existente;
     for (final p in _pinesCreados) {
       if (p.textField == lugar['nombre']) {
@@ -262,10 +295,14 @@ class _HomePageState extends State<HomePage> {
       await _pinManager!.update(existente);
     }
 
+    // Volar hacia el lugar
     await mapboxMapController?.flyTo(
       mp.CameraOptions(
         center: mp.Point(
-          coordinates: mp.Position(lugar['lon'] as double, lugar['lat'] as double),
+          coordinates: mp.Position(
+            lugar['lon'] as double,
+            lugar['lat'] as double,
+          ),
         ),
         zoom: 18.0,
         pitch: 45.0,
@@ -274,14 +311,30 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 📸 INICIALIZAR CÁMARA
+  // ════════════════════════════════════════════════════════════════════════
   Future<void> _initCamera() async {
-    await Permission.camera.request();
-    final cameras = await availableCameras();
-    _controller = CameraController(cameras.first, ResolutionPreset.high);
-    await _controller!.initialize();
-    setState(() => _cameraReady = true);
+    try {
+      await Permission.camera.request();
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        debugPrint('⚠️ No hay cámaras disponibles');
+        return;
+      }
+      _controller = CameraController(cameras.first, ResolutionPreset.high);
+      await _controller!.initialize();
+      if (mounted) {
+        setState(() => _cameraReady = true);
+      }
+    } catch (e) {
+      debugPrint('❌ Error inicializando cámara: $e');
+    }
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 🔄 ALTERNAR PANEL DE CÁMARA
+  // ════════════════════════════════════════════════════════════════════════
   void _toggleCamera(bool value) {
     setState(() {
       showCamera = value;
@@ -289,10 +342,14 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 🗺️ CONFIGURAR MAPA AL CREARSE
+  // ════════════════════════════════════════════════════════════════════════
   Future<void> _onMapCreated(mp.MapboxMap controller) async {
     mapboxMapController = controller;
     await _checkAndRequestLocationPermission();
 
+    // Habilitar punto de ubicación del usuario
     await mapboxMapController?.location.updateSettings(
       mp.LocationComponentSettings(
         enabled: true,
@@ -301,13 +358,17 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
-    _pinManager ??= await mapboxMapController!.annotations.createPointAnnotationManager();
+    // Crear manager de pines
+    _pinManager ??=
+        await mapboxMapController!.annotations.createPointAnnotationManager();
 
+    // Cargar imagen de los pines
     final bytes = await rootBundle.load('assets/icons/punto_mapa_rojo_f.png');
     final imageData = bytes.buffer.asUint8List();
     final lugares = lugaresUeb;
     final puntos = <mp.Point>[];
 
+    // Crear pines para todos los lugares
     for (final l in lugares) {
       final pin = await _pinManager!.create(
         mp.PointAnnotationOptions(
@@ -325,12 +386,15 @@ class _HomePageState extends State<HomePage> {
       ));
     }
 
+    // Evento tap en pines
     _pinManager?.tapEvents(
       onTap: (mp.PointAnnotation annotation) async {
         final lugar = lugares.firstWhere(
           (l) =>
-              (l['lat'] as double) == annotation.geometry.coordinates.lat.toDouble() &&
-              (l['lon'] as double) == annotation.geometry.coordinates.lng.toDouble(),
+              (l['lat'] as double) ==
+                  annotation.geometry.coordinates.lat.toDouble() &&
+              (l['lon'] as double) ==
+                  annotation.geometry.coordinates.lng.toDouble(),
           orElse: () => {'nombre': 'Lugar sin nombre'},
         );
 
@@ -338,19 +402,26 @@ class _HomePageState extends State<HomePage> {
           showDialog(
             context: context,
             builder: (_) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
               title: Row(
                 children: [
                   const Text("📍 ", style: TextStyle(fontSize: 22)),
                   Expanded(
                     child: Text(
                       lugar['nombre'],
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 17,
+                      ),
                     ),
                   ),
                 ],
               ),
-              content: const Text("¿Deseas iniciar la navegación hacia este lugar?"),
+              content: const Text(
+                "¿Deseas iniciar la navegación hacia este lugar?",
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -375,8 +446,13 @@ class _HomePageState extends State<HomePage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ],
@@ -386,6 +462,7 @@ class _HomePageState extends State<HomePage> {
       },
     );
 
+    // Calcular bounds de todos los puntos y volar hacia ellos
     if (puntos.isNotEmpty) {
       double minLat = puntos.first.coordinates.lat.toDouble();
       double maxLat = puntos.first.coordinates.lat.toDouble();
@@ -415,6 +492,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 📍 CONFIGURAR SEGUIMIENTO DE UBICACIÓN
+  // ════════════════════════════════════════════════════════════════════════
   Future<void> _setupPositionTracking() async {
     await _checkAndRequestLocationPermission();
     userPositionStream?.cancel();
@@ -428,12 +508,27 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 🎯 IR A MI UBICACIÓN ACTUAL
+  // ════════════════════════════════════════════════════════════════════════
   Future<void> _goToMyLocation() async {
-    if (currentPosition == null || mapboxMapController == null) return;
+    if (currentPosition == null || mapboxMapController == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Esperando ubicación GPS...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     await mapboxMapController!.flyTo(
       mp.CameraOptions(
         center: mp.Point(
-          coordinates: mp.Position(currentPosition!.longitude, currentPosition!.latitude),
+          coordinates: mp.Position(
+            currentPosition!.longitude,
+            currentPosition!.latitude,
+          ),
         ),
         zoom: 17.5,
         pitch: 45.0,
@@ -442,12 +537,28 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // ✅ VERIFICAR Y SOLICITAR PERMISOS DE UBICACIÓN
+  // ════════════════════════════════════════════════════════════════════════
   Future<void> _checkAndRequestLocationPermission() async {
     bool enabled = await gl.Geolocator.isLocationServiceEnabled();
-    if (!enabled) return;
+    if (!enabled) {
+      debugPrint('⚠️ Servicios de ubicación desactivados');
+      return;
+    }
+
     gl.LocationPermission perm = await gl.Geolocator.checkPermission();
     if (perm == gl.LocationPermission.denied) {
       perm = await gl.Geolocator.requestPermission();
+      if (perm == gl.LocationPermission.denied) {
+        debugPrint('❌ Permisos de ubicación denegados');
+        return;
+      }
+    }
+
+    if (perm == gl.LocationPermission.deniedForever) {
+      debugPrint('🚫 Permisos de ubicación denegados permanentemente');
+      return;
     }
   }
 }
