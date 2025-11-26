@@ -4,16 +4,15 @@ import 'package:sliding_up_panel2/sliding_up_panel2.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:math' as math;
 
-// ✅ AR IMPORTS
+// ✅ AR IMPORTS (TODOS LOS MANAGERS - USAMOS SOLO 3)
 import 'package:ar_flutter_plugin/ar_flutter_plugin.dart';
 import 'package:ar_flutter_plugin/managers/ar_session_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_object_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_anchor_manager.dart';
-import 'package:ar_flutter_plugin/managers/ar_location_manager.dart';
+import 'package:ar_flutter_plugin/managers/ar_location_manager.dart'; // ✅ Lo importamos
 import 'package:ar_flutter_plugin/datatypes/config_planedetection.dart';
 import 'package:ar_flutter_plugin/datatypes/node_types.dart';
 import 'package:ar_flutter_plugin/models/ar_node.dart';
-import 'package:ar_flutter_plugin/models/ar_anchor.dart';
 import 'package:vector_math/vector_math_64.dart' as vector;
 
 import '../../services/ar_anchor_config.dart';
@@ -27,9 +26,11 @@ class MapArScreen extends StatefulWidget {
 class _MapArScreenState extends State<MapArScreen> {
   GoogleMapController? _gmap;
   
+  // ✅ SOLO 3 MANAGERS (NO 4)
   ARSessionManager? _arSessionManager;
   ARObjectManager? _arObjectManager;
   ARAnchorManager? _arAnchorManager;
+  // ❌ ELIMINADO: ARLocationManager? _arLocationManager;
   
   bool _isARInitialized = false;
   String? _arError;
@@ -54,11 +55,11 @@ class _MapArScreenState extends State<MapArScreen> {
     super.dispose();
   }
 
-  // ✅ FIX 1: CORRECCIÓN DE locationSettings
+  // ✅ OBTENER UBICACIÓN ACTUAL
   Future<void> _getCurrentLocation() async {
     try {
       _currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best, // ✅ CAMBIO AQUÍ
+        desiredAccuracy: LocationAccuracy.best,
       );
       setState(() {});
     } catch (e) {
@@ -66,17 +67,19 @@ class _MapArScreenState extends State<MapArScreen> {
     }
   }
 
+  // ✅ INICIALIZAR AR (RECIBE 4 PARÁMETROS)
   Future<void> _onARInit(
     ARSessionManager arSessionManager,
     ARObjectManager arObjectManager,
     ARAnchorManager arAnchorManager,
-    ARLocationManager arLocationManager,
+    ARLocationManager arLocationManager, // ✅ Lo recibimos pero no usamos
   ) async {
     try {
       setState(() {
         _arSessionManager = arSessionManager;
         _arObjectManager = arObjectManager;
         _arAnchorManager = arAnchorManager;
+        // No guardamos arLocationManager
         _arError = null;
       });
 
@@ -104,50 +107,48 @@ class _MapArScreenState extends State<MapArScreen> {
     }
   }
 
-  // ✅ FIX 2: CORRECCIÓN DE addAnchorWithWorldPose
-  // ✅ CORREGIDO: lib/features/mapar/map_ar_screen.dart
-Future<void> _placeARAnchors() async {
-  if (_arObjectManager == null || _currentPosition == null) return;
+  // ✅ COLOCAR NODOS AR (SIN ANCLAS)
+  Future<void> _placeARAnchors() async {
+    if (_arObjectManager == null || _currentPosition == null) return;
 
-  for (final poi in ArAnchorConfig.poiAnchors) {
-    try {
-      final distance = Geolocator.distanceBetween(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-        poi.latitude,
-        poi.longitude,
-      );
+    for (final poi in ArAnchorConfig.poiAnchors) {
+      try {
+        final distance = Geolocator.distanceBetween(
+          _currentPosition!.latitude,
+          _currentPosition!.longitude,
+          poi.latitude,
+          poi.longitude,
+        );
 
-      final bearing = Geolocator.bearingBetween(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-        poi.latitude,
-        poi.longitude,
-      );
+        final bearing = Geolocator.bearingBetween(
+          _currentPosition!.latitude,
+          _currentPosition!.longitude,
+          poi.latitude,
+          poi.longitude,
+        );
 
-      final radians = bearing * (math.pi / 180);
-      final x = distance * math.sin(radians);
-      final z = -distance * math.cos(radians);
-      final y = poi.altitude ?? 0.0;
+        final radians = bearing * (math.pi / 180);
+        final x = distance * math.sin(radians);
+        final z = -distance * math.cos(radians);
+        final y = poi.altitude ?? 0.0;
 
-      // ✅ FIX: Usar ARNode directamente (sin anclas)
-      final node = ARNode(
-        type: NodeType.webGLB,
-        uri: 'https://raw.githubusercontent.com/KhronosGr oup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
-        scale: vector.Vector3(0.5, 0.5, 0.5),
-        position: vector.Vector3(x, y, z),
-        rotation: vector.Vector4(1, 0, 0, 0),
-      );
+        // ✅ CREAR NODO AR DIRECTAMENTE
+        final node = ARNode(
+          type: NodeType.webGLB,
+          uri: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
+          scale: vector.Vector3(0.5, 0.5, 0.5),
+          position: vector.Vector3(x, y, z),
+          rotation: vector.Vector4(1, 0, 0, 0),
+        );
 
-      // ✅ Añadir nodo SIN ancla
-      await _arObjectManager!.addNode(node);
-      debugPrint('✅ Nodo AR colocado: ${poi.name} ($x, $y, $z)');
-      
-    } catch (e) {
-      debugPrint('❌ Error colocando nodo ${poi.name}: $e');
+        await _arObjectManager!.addNode(node);
+        debugPrint('✅ Nodo AR colocado: ${poi.name} ($x, $y, $z)');
+        
+      } catch (e) {
+        debugPrint('❌ Error colocando nodo ${poi.name}: $e');
+      }
     }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -256,7 +257,7 @@ Future<void> _placeARAnchors() async {
     return Stack(
       children: [
         ARView(
-          onARViewCreated: _onARInit,
+          onARViewCreated: _onARInit, // ✅ 3 parámetros, no 4
           planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
         ),
         

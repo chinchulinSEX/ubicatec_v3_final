@@ -1,15 +1,16 @@
-// ✅ NUEVA PANTALLA AR COMPLETA CON AR FLUTTER PLUGIN
+// ✅ NUEVA PANTALLA AR COMPLETA CON AR FLUTTER PLUGIN (CORREGIDO)
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' as gl;
 import 'package:vector_math/vector_math_64.dart' as vector;
 
-// 🔴 AR IMPORTS
+// ✅ AR IMPORTS (4 MANAGERS - RECIBIMOS TODOS PERO SOLO USAMOS 3)
 import 'package:ar_flutter_plugin/ar_flutter_plugin.dart';
 import 'package:ar_flutter_plugin/managers/ar_session_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_object_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_anchor_manager.dart';
+import 'package:ar_flutter_plugin/managers/ar_location_manager.dart'; // ✅ SÍ lo importamos
 import 'package:ar_flutter_plugin/datatypes/config_planedetection.dart';
 import 'package:ar_flutter_plugin/datatypes/node_types.dart';
 import 'package:ar_flutter_plugin/models/ar_node.dart';
@@ -32,10 +33,11 @@ class ARNavigationScreen extends StatefulWidget {
 }
 
 class _ARNavigationScreenState extends State<ARNavigationScreen> {
-  // 📡 Managers de AR
+  // ✅ MANAGERS DE AR
   ARSessionManager? _arSessionManager;
   ARObjectManager? _arObjectManager;
   ARAnchorManager? _arAnchorManager;
+  // No declaramos _arLocationManager porque no lo usamos
 
   // 📍 Ubicación y sensores
   gl.Position? _currentPos;
@@ -139,11 +141,12 @@ class _ARNavigationScreenState extends State<ARNavigationScreen> {
     ARSessionManager arSessionManager,
     ARObjectManager arObjectManager,
     ARAnchorManager arAnchorManager,
-    ARLocationManager arLocationManager,
+    ARLocationManager arLocationManager, // ✅ Lo recibimos pero no lo usamos
   ) async {
     _arSessionManager = arSessionManager;
     _arObjectManager = arObjectManager;
     _arAnchorManager = arAnchorManager;
+    // No guardamos arLocationManager porque no lo necesitamos
 
     await _arSessionManager!.onInitialize(
       showFeaturePoints: false,
@@ -213,9 +216,9 @@ class _ARNavigationScreenState extends State<ARNavigationScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // 🎥 VISTA AR
+          // 🎥 VISTA AR (onARViewCreated recibe 4 parámetros)
           ARView(
-            onARViewCreated: _onARViewCreated,
+            onARViewCreated: _onARViewCreated, // ✅ Acepta 4 parámetros
             planeDetectionConfig: PlaneDetectionConfig.horizontal,
           ),
 
