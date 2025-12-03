@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:camera/camera.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart' as gl;
 import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
 
-import 'ar_view_page.dart';
+// IMPORTANTE: necesitas este import para abrir el AR
+import 'ar_navigation_3d.dart'; // <-- AJUSTA la ruta si tu carpeta AR está en otro lado
 
 /// 🚗 Navegación estilo Google Maps / Yango Pro
 class MapNavigationPage extends StatefulWidget {
@@ -27,17 +28,26 @@ class MapNavigationPage extends StatefulWidget {
 }
 
 class _MapNavigationPageState extends State<MapNavigationPage> {
+  // ============================
+  // 🔧 MANEJO DE MAPBOX + RUTAS
+  // ============================
   mp.MapboxMap? map;
   mp.PolylineAnnotationManager? _routeManager;
-  mp.PolylineAnnotation? _route;
+  mp.PolylineAnnotation? _route; // <- aquí se guarda la ruta completa
 
+  // ============================
+  // 📍 UBICACIÓN ACTUAL
+  // ============================
   gl.Position? _currentPos;
   StreamSubscription<gl.Position>? _posStream;
 
+  // ============================
+  // UI + ESTADOS
+  // ============================
   bool _loading = true;
   bool _recalculando = false;
-  bool _isDriving = false;
-  bool _darkMode = true;
+  bool _isDriving = false; // 🚘 Auto por defecto
+  bool _darkMode = true; // 🌙 Modo oscuro del mapa
 
   String _tiempoEstimado = "";
   String _distancia = "";
@@ -47,7 +57,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
   @override
   void initState() {
     super.initState();
-    _initLocation();
+    _initLocation(); // Inicia GPS + seguimiento
   }
 
   @override
@@ -61,12 +71,19 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     return Scaffold(
       body: Stack(
         children: [
+          // ==================================================
+          // 🗺️ MAPA PRINCIPAL DE MAPBOX
+          // ==================================================
           mp.MapWidget(
             onMapCreated: _onMapCreated,
-            styleUri: _darkMode ? mp.MapboxStyles.DARK : mp.MapboxStyles.MAPBOX_STREETS,
+            styleUri: _darkMode
+                ? mp.MapboxStyles.DARK
+                : mp.MapboxStyles.MAPBOX_STREETS,
           ),
 
-          // 🧭 Panel de navegación principal
+          // ==================================================
+          // 🧭 PANEL DE NAVEGACIÓN PARA GIROS
+          // ==================================================
           if (_instrucciones.isNotEmpty)
             Positioned(
               top: 40,
@@ -74,7 +91,8 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
               right: 15,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                 decoration: BoxDecoration(
                   color: Colors.redAccent,
                   borderRadius: BorderRadius.circular(18),
@@ -89,6 +107,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    // 🚗 / 🚶 ICONO DE MODO
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.25),
@@ -96,12 +115,17 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
                       ),
                       padding: const EdgeInsets.all(8),
                       child: Icon(
-                        _isDriving ? Icons.directions_car : Icons.directions_walk,
+                        _isDriving
+                            ? Icons.directions_car
+                            : Icons.directions_walk,
                         color: Colors.white,
                         size: 26,
                       ),
                     ),
+
                     const SizedBox(width: 12),
+
+                    // 📜 INSTRUCCIONES + DISTANCIA + TIEMPO
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,24 +142,26 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
                           const SizedBox(height: 5),
                           Row(
                             children: [
-                              const Icon(Icons.timer, size: 16, color: Colors.white70),
+                              const Icon(Icons.timer,
+                                  size: 16, color: Colors.white70),
                               const SizedBox(width: 4),
-                              Text(
-                                _tiempoEstimado,
-                                style: const TextStyle(color: Colors.white70, fontSize: 13.5),
-                              ),
+                              Text(_tiempoEstimado,
+                                  style:
+                                      const TextStyle(color: Colors.white70)),
                               const SizedBox(width: 12),
-                              const Icon(Icons.place, size: 16, color: Colors.white70),
+                              const Icon(Icons.place,
+                                  size: 16, color: Colors.white70),
                               const SizedBox(width: 4),
-                              Text(
-                                _distancia,
-                                style: const TextStyle(color: Colors.white70, fontSize: 13.5),
-                              ),
+                              Text(_distancia,
+                                  style:
+                                      const TextStyle(color: Colors.white70)),
                             ],
                           ),
                         ],
                       ),
                     ),
+
+                    // 🎛 BOTONES DEL PANEL (Cerrar / Cambiar modo)
                     Column(
                       children: [
                         IconButton(
@@ -144,22 +170,26 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
                             _posStream?.cancel();
                             Navigator.pop(context);
                           },
-                          icon: const Icon(Icons.close, color: Colors.white, size: 22),
+                          icon: const Icon(Icons.close,
+                              color: Colors.white, size: 22),
                         ),
                         IconButton(
-                          tooltip: "Cambiar modo (Auto / Caminando)",
+                          tooltip: "Cambiar modo Auto/Caminando",
                           onPressed: () async {
                             setState(() {
                               _isDriving = !_isDriving;
                               _loading = true;
                             });
                             if (_currentPos != null) {
-                              await _dibujarRuta(widget.destLat, widget.destLon);
+                              await _dibujarRuta(
+                                  widget.destLat, widget.destLon);
                             }
                             setState(() => _loading = false);
                           },
                           icon: Icon(
-                            _isDriving ? Icons.directions_car : Icons.directions_walk,
+                            _isDriving
+                                ? Icons.directions_car
+                                : Icons.directions_walk,
                             color: Colors.white,
                             size: 22,
                           ),
@@ -171,49 +201,25 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
               ),
             ),
 
-          // ✅ BOTÓN DE CÁMARA AR EN NAVEGACIÓN (DENTRO DEL STACK)
-          Positioned(
-            right: 20,
-            bottom: 180,
-            child: FloatingActionButton(
-              heroTag: "ar_mode_nav",
-              backgroundColor: Colors.black,
-              tooltip: "Cámara AR",
-              onPressed: () async {
-                try {
-                  final cams = await availableCameras();
-                  if (cams.isEmpty) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('⚠️ No hay cámara disponible')),
-                      );
-                    }
-                    return;
-                  }
-
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ARViewPage(
-                        camera: cams.first,
-                        imagePath: 'assets/icons/puntote_rojo_f.png',
-                        titulo: 'Facultad de Tecnología',
-                      ),
-                    ),
-                  );
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error al abrir la cámara: $e')),
-                    );
-                  }
-                }
-              },
-              child: const Icon(Icons.camera_alt, color: Colors.white),
+          // ==================================================
+          // 🔴 BOTÓN PARA ABRIR EL MODO AR 3D
+          // ==================================================
+          if (_route != null) // Solo se muestra cuando ya existe la ruta
+            Positioned(
+              bottom: 40,
+              right: 20,
+              child: FloatingActionButton(
+                heroTag: "ar_button",
+                backgroundColor: Colors.redAccent,
+                onPressed: _abrirModoAr,
+                child:
+                    const Icon(Icons.view_in_ar, color: Colors.white, size: 28),
+              ),
             ),
-          ),
 
-          // Loading indicator
+          // ==================================================
+          // ⏳ LOADING MIENTRAS CALCULA RUTA
+          // ==================================================
           if (_loading)
             const Center(
               child: CircularProgressIndicator(color: Colors.redAccent),
@@ -223,6 +229,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     );
   }
 
+  // ============================================================
+  // 📍 Inicializa ubicación + seguimiento del usuario
+  // ============================================================
   Future<void> _initLocation() async {
     await _checkPermisos();
 
@@ -232,20 +241,29 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     );
 
     _posStream?.cancel();
-    _posStream = gl.Geolocator.getPositionStream(locationSettings: settings).listen((pos) async {
+    _posStream = gl.Geolocator.getPositionStream(locationSettings: settings)
+        .listen((pos) async {
       _currentPos = pos;
+
+      // mueve cámara
       if (map != null) {
         _centrarCamara(pos.latitude, pos.longitude, heading: pos.heading);
       }
+
+      // si ya hay ruta, actualiza progreso
       if (_route != null) {
         await _actualizarProgreso(widget.destLat, widget.destLon);
       }
     });
   }
 
+  // ============================================================
+  // 🗺️ Cuando el mapa está listo
+  // ============================================================
   Future<void> _onMapCreated(mp.MapboxMap controller) async {
     map = controller;
 
+    // Activa ubicación pulsante
     await map!.location.updateSettings(
       mp.LocationComponentSettings(
         enabled: true,
@@ -256,13 +274,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
 
     _routeManager = await map!.annotations.createPolylineAnnotationManager();
 
-    try {
-      _currentPos = await gl.Geolocator.getCurrentPosition(
-        desiredAccuracy: gl.LocationAccuracy.best,
-      );
-    } catch (e) {
-      debugPrint("❌ Error obteniendo ubicación: $e");
-    }
+    _currentPos = await gl.Geolocator.getCurrentPosition(
+      desiredAccuracy: gl.LocationAccuracy.best,
+    );
 
     if (_currentPos != null) {
       await _dibujarRuta(widget.destLat, widget.destLon);
@@ -272,6 +286,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     setState(() => _loading = false);
   }
 
+  // ============================================================
+  // 🎯 GENERA LA RUTA usando Mapbox Directions
+  // ============================================================
   Future<void> _dibujarRuta(double destLat, double destLon) async {
     final start = "${_currentPos!.longitude},${_currentPos!.latitude}";
     final end = "$destLon,$destLat";
@@ -280,12 +297,8 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
 
     final url = Uri.parse(
       "https://api.mapbox.com/directions/v5/mapbox/$profile/$start;$end"
-      "?geometries=geojson"
-      "&overview=full"
-      "&steps=true"
+      "?geometries=geojson&overview=full&steps=true"
       "&annotations=maxspeed,congestion,distance"
-      "&voice_instructions=false"
-      "&banner_instructions=false"
       "&access_token=$token",
     );
 
@@ -297,8 +310,11 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
       final route = data['routes'][0];
       final coords = route['geometry']['coordinates'] as List;
 
-      final puntos = coords.map((c) => mp.Position(c[0].toDouble(), c[1].toDouble())).toList();
+      final puntos = coords
+          .map((c) => mp.Position(c[0].toDouble(), c[1].toDouble()))
+          .toList();
 
+      // limpia y dibuja ruta
       await _routeManager?.deleteAll();
       _route = await _routeManager!.create(
         mp.PolylineAnnotationOptions(
@@ -308,11 +324,14 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
         ),
       );
 
+      // calcula tiempo/distancia
       final distanciaMetros = route['distance'] ?? 0;
       final duracionSeg = route['duration'] ?? 0;
-      _distancia = "${(distanciaMetros / 1000).toStringAsFixed(1)} km";
-      _tiempoEstimado = "${(duracionSeg / 60).toStringAsFixed(0)} min aprox";
 
+      _distancia = "${(distanciaMetros / 1000).toStringAsFixed(1)} km";
+      _tiempoEstimado = "${(duracionSeg / 60).toStringAsFixed(0)} min";
+
+      // instrucciones paso a paso
       final pasos = route['legs'][0]['steps'] as List;
       setState(() {
         _instrucciones = pasos.map<String>((s) {
@@ -335,6 +354,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     }
   }
 
+  // ============================================================
+  // 📡 Mueve la cámara estilo Yango
+  // ============================================================
   Future<void> _centrarCamara(double lat, double lon, {double? heading}) async {
     await map?.setCamera(
       mp.CameraOptions(
@@ -346,6 +368,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     );
   }
 
+  // ============================================================
+  // 🚶 Actualiza progreso y detecta llegada
+  // ============================================================
   Future<void> _actualizarProgreso(double destLat, double destLon) async {
     if (_currentPos == null || _route == null || _recalculando) return;
 
@@ -371,6 +396,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
       return;
     }
 
+    // si saliste de la ruta → recalcula
     if (!_estasEnRuta()) {
       _recalculando = true;
       await _dibujarRuta(destLat, destLon);
@@ -380,6 +406,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
 
   bool _estasEnRuta() {
     if (_route == null || _currentPos == null) return true;
+
     const tolerancia = 15.0;
     for (final p in _route!.geometry.coordinates) {
       final dist = gl.Geolocator.distanceBetween(
@@ -393,6 +420,9 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     return false;
   }
 
+  // ============================================================
+  // ✔️ Verifica permisos de ubicación
+  // ============================================================
   Future<void> _checkPermisos() async {
     bool activo = await gl.Geolocator.isLocationServiceEnabled();
     if (!activo) return Future.error('⚠️ GPS apagado');
@@ -401,11 +431,37 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
     if (permiso == gl.LocationPermission.denied) {
       permiso = await gl.Geolocator.requestPermission();
       if (permiso == gl.LocationPermission.denied) {
-        return Future.error('❌ Permiso de ubicación denegado');
+        return Future.error('❌ Permiso denegado');
       }
     }
     if (permiso == gl.LocationPermission.deniedForever) {
       return Future.error('🚫 Permiso denegado permanentemente');
     }
+  }
+
+  // ============================================================
+  // ⭐⭐⭐ AQUI ESTÁ EL MOTOR: ABRIR EL AR ⭐⭐⭐
+  // ============================================================
+  void _abrirModoAr() {
+    if (_route == null) return;
+    print(widget.destLat + widget.destLon);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ArNavigation3D(
+          targetLat: widget.destLat,
+          targetLon: widget.destLon,
+          targetName: widget.destName,
+
+          // WAYPOINTS desde Mapbox → AR
+          routeWaypoints: _route!.geometry.coordinates
+              .map((p) => {
+                    'lat': p.lat.toDouble(), // latitude real
+                    'lon': p.lng.toDouble(), // longitude real
+                  })
+              .toList(),
+        ),
+      ),
+    );
   }
 }

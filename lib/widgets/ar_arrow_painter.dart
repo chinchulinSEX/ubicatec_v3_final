@@ -1,14 +1,15 @@
 // =====================================================
-// 🎨 AR ARROW PAINTER - FLECHA 3D ROJA
+// 🎨 AR ARROW PAINTER - FLECHA 3D ROJA (CORREGIDO)
 // =====================================================
-// Dibuja flecha 3D con efectos de profundidad,
-// sombras y animaciones
+// Cambios principales:
+// 1. Flecha pequeña aparece cuando relativeAngle > 5°
+// 2. Ambas flechas pueden coexistir
+// 3. Mejora en la lógica de visualización
 // =====================================================
 
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 
 class ArArrowPainter extends CustomPainter {
   // Datos de orientación
@@ -58,20 +59,37 @@ class ArArrowPainter extends CustomPainter {
       return;
     }
 
-    // Verificar si el objetivo está en el campo de visión
-    if (relativeAngle.abs() > 75) {
-      _drawOffScreenIndicator(canvas, size);
+    // =====================================================
+    // 🔥 LÓGICA CORREGIDA DE FLECHAS
+    // =====================================================
+    
+    // Si estás apuntando casi exacto (± 5°), mostrar solo flecha grande
+    if (relativeAngle.abs() <= 5) {
+      final arrowPosition = _calculateArrowPosition(size);
+      _draw3DArrow(canvas, arrowPosition, size);
+      _drawDistanceLabel(canvas, arrowPosition);
       return;
     }
-
-    // Calcular posición 3D proyectada
-    final arrowPosition = _calculateArrowPosition(size);
-
-    // Dibujar flecha 3D con efectos
-    _draw3DArrow(canvas, arrowPosition, size);
-
-    // Dibujar distancia
-    _drawDistanceLabel(canvas, arrowPosition);
+    
+    // Si estás moderadamente desviado (5° - 45°), mostrar ambas
+    if (relativeAngle.abs() <= 45) {
+      // Flecha pequeña en el borde
+      _drawSmallGuideArrow(canvas, size);
+      
+      // Flecha grande semi-transparente
+      final arrowPosition = _calculateArrowPosition(size);
+      canvas.saveLayer(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.white.withOpacity(0.5));
+      _draw3DArrow(canvas, arrowPosition, size);
+      canvas.restore();
+      _drawDistanceLabel(canvas, arrowPosition);
+      return;
+    }
+    
+    // Si estás muy desviado (> 45°), solo flecha pequeña
+    _drawSmallGuideArrow(canvas, size);
+    
+    // Mostrar distancia en el centro
+    _drawCenteredDistance(canvas, size);
   }
 
   // =====================================================
@@ -218,6 +236,62 @@ class ArArrowPainter extends CustomPainter {
   }
 
   // =====================================================
+  // 🧭 FLECHA GUÍA PEQUEÑA (NUEVA)
+  // =====================================================
+  void _drawSmallGuideArrow(Canvas canvas, Size size) {
+    final isLeft = relativeAngle < 0;
+    final edgeX = isLeft ? 60.0 : size.width - 60;
+    final edgeY = size.height / 2;
+
+    canvas.save();
+    canvas.translate(edgeX, edgeY);
+    canvas.rotate(_toRadians(isLeft ? -90 : 90));
+
+    // Sombra
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.5)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+
+    final shadowPath = Path()
+      ..moveTo(0, -30)
+      ..lineTo(-22, 18)
+      ..lineTo(22, 18)
+      ..close();
+    
+    canvas.drawPath(shadowPath.shift(const Offset(3, 3)), shadowPaint);
+
+    // Cuerpo amarillo/naranja
+    final indicatorPaint = Paint()
+      ..shader = ui.Gradient.linear(
+        const Offset(0, -30),
+        const Offset(0, 18),
+        [
+          Colors.yellow,
+          Colors.orange,
+        ],
+      )
+      ..style = PaintingStyle.fill;
+
+    final indicatorPath = Path()
+      ..moveTo(0, -30)
+      ..lineTo(-22, 18)
+      ..lineTo(22, 18)
+      ..close();
+
+    canvas.drawPath(indicatorPath, indicatorPaint);
+
+    // Borde blanco
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+
+    canvas.drawPath(indicatorPath, borderPaint);
+
+    canvas.restore();
+  }
+
+  // =====================================================
   // 📏 CALCULAR ESCALA POR DISTANCIA
   // =====================================================
   double _calculateDistanceScale() {
@@ -230,7 +304,7 @@ class ArArrowPainter extends CustomPainter {
   }
 
   // =====================================================
-  // 🏷️ ETIQUETA DE DISTANCIA
+  // 🏷️ ETIQUETA DE DISTANCIA (bajo la flecha grande)
   // =====================================================
   void _drawDistanceLabel(Canvas canvas, Offset position) {
     final distanceText = distanceToTarget < 1000
@@ -268,46 +342,22 @@ class ArArrowPainter extends CustomPainter {
   }
 
   // =====================================================
-  // ⚠️ INDICADOR FUERA DE PANTALLA
+  // 🏷️ DISTANCIA CENTRADA (cuando solo hay flecha pequeña)
   // =====================================================
-  void _drawOffScreenIndicator(Canvas canvas, Size size) {
-    final indicatorPaint = Paint()
-      ..color = Colors.orange
-      ..style = PaintingStyle.fill;
+  void _drawCenteredDistance(Canvas canvas, Size size) {
+    final distanceText = distanceToTarget < 1000
+        ? '${distanceToTarget.toStringAsFixed(0)} m'
+        : '${(distanceToTarget / 1000).toStringAsFixed(1)} km';
 
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    // Posición en el borde según el ángulo
-    final isLeft = relativeAngle < 0;
-    final edgeX = isLeft ? 60.0 : size.width - 60;
-    final edgeY = size.height / 2;
-
-    canvas.save();
-    canvas.translate(edgeX, edgeY);
-    canvas.rotate(_toRadians(isLeft ? -90 : 90));
-
-    // Triángulo indicador
-    final indicatorPath = Path()
-      ..moveTo(0, -25)
-      ..lineTo(-20, 15)
-      ..lineTo(20, 15)
-      ..close();
-
-    canvas.drawPath(indicatorPath, indicatorPaint);
-    canvas.drawPath(indicatorPath, borderPaint);
-
-    canvas.restore();
-
-    // Texto de distancia
     final textSpan = TextSpan(
-      text: '${distanceToTarget.toStringAsFixed(0)} m',
+      text: distanceText,
       style: const TextStyle(
         color: Colors.white,
-        fontSize: 16,
+        fontSize: 24,
         fontWeight: FontWeight.bold,
+        shadows: [
+          Shadow(color: Colors.black, blurRadius: 10),
+        ],
       ),
     );
 
@@ -319,7 +369,10 @@ class ArArrowPainter extends CustomPainter {
     textPainter.layout();
     textPainter.paint(
       canvas,
-      Offset(edgeX - textPainter.width / 2, edgeY + 30),
+      Offset(
+        size.width / 2 - textPainter.width / 2,
+        size.height / 2 - textPainter.height / 2,
+      ),
     );
   }
 

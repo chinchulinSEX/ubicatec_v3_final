@@ -10,7 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'filtracion.dart';
 import 'lugares_ueb.dart';
-import 'navigation_mode.dart';
+import 'MapNavigationPage.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -92,7 +92,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       child: CameraPreview(_controller!),
                     ),
-                    
+
                     // 📏 Indicador de arrastre
                     Align(
                       alignment: Alignment.topCenter,
@@ -106,7 +106,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                     ),
-                    
+
                     // ❌ Botón cerrar cámara
                     Positioned(
                       top: 40,
@@ -124,7 +124,7 @@ class _HomePageState extends State<HomePage> {
             ),
 
           // ✅ BOTONES FLOTANTES (POSICIONADOS ARRIBA DEL BOTTOMNAVIGATIONBAR)
-          
+
           // 📸 BOTÓN ABRIR CÁMARA
           if (!showCamera)
             Positioned(
@@ -135,7 +135,8 @@ class _HomePageState extends State<HomePage> {
                 backgroundColor: Colors.indigo,
                 onPressed: () => _toggleCamera(true),
                 tooltip: 'Abrir cámara',
-                child: const Icon(Icons.camera_alt, color: Colors.white, size: 28),
+                child:
+                    const Icon(Icons.camera_alt, color: Colors.white, size: 28),
               ),
             ),
 
@@ -148,7 +149,8 @@ class _HomePageState extends State<HomePage> {
               backgroundColor: Colors.redAccent,
               onPressed: _goToMyLocation,
               tooltip: 'Mi ubicación',
-              child: const Icon(Icons.my_location, color: Colors.white, size: 28),
+              child:
+                  const Icon(Icons.my_location, color: Colors.white, size: 28),
             ),
           ),
 
@@ -434,8 +436,10 @@ class _HomePageState extends State<HomePage> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => MapNavigationPage(
-                          destLat: annotation.geometry.coordinates.lat.toDouble(),
-                          destLon: annotation.geometry.coordinates.lng.toDouble(),
+                          destLat:
+                              annotation.geometry.coordinates.lat.toDouble(),
+                          destLon:
+                              annotation.geometry.coordinates.lng.toDouble(),
                           destName: lugar['nombre'].toString(),
                         ),
                       ),

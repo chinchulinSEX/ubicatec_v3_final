@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart' as gl;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
 
 import '../pages/lugares_ueb.dart';
+import 'MapNavigationPage.dart';
+
 
 class IndoorNavigationPage extends StatefulWidget {
   const IndoorNavigationPage({super.key});
@@ -58,6 +60,12 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
         foregroundColor: Colors.white,
       ),
       body: Stack(
+
+
+
+
+
+        
         children: [
           mp.MapWidget(
             onMapCreated: _onMapCreated,
@@ -552,6 +560,7 @@ class _IndoorNavigationPageState extends State<IndoorNavigationPage> {
       SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
     );
   }
+  
 }
 
 class _Edge {

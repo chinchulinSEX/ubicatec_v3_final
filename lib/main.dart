@@ -1,5 +1,5 @@
 // ✅ NUEVO: lib/main.dart
-import 'package:flutter/material.dart';
+/* import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -37,3 +37,4 @@ class UbicatecApp extends StatelessWidget {
     );
   }
 }
+*/

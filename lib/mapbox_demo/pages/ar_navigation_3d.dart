@@ -1,401 +1,694 @@
-import 'dart:async';
-import 'dart:convert';
-import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:geolocator/geolocator.dart' as gl;
-import 'package:http/http.dart' as http;
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
-import 'package:geolocator/geolocator.dart' as gl;
-/// 🚗 Navegación estilo Google Maps / Yango Pro
-class MapNavigationPage extends StatefulWidget {
-  final double destLat;
-  final double destLon;
-  final String destName;
+// =====================================================
+// 🎯 AR NAVIGATION 3D - SOLUCIÓN DEFINITIVA
+// =====================================================
+// FIXES CRÍTICOS:
+// 1. Compass heading normalizado correctamente (0-360°)
+// 2. Waypoints validados y en orden correcto
+// 3. Cálculos de distancia/bearing funcionando
+// 4. RelativeAngle calculado correctamente
+// =====================================================
 
-  const MapNavigationPage({
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_compass/flutter_compass.dart';
+import 'package:geolocator/geolocator.dart';
+
+import '../../services/ar_route_calculator.dart';
+import '../../services/ar_sensor_manager.dart';
+import '../../widgets/ar_arrow_painter.dart';
+import '../../widgets/ar_hud_overlay.dart';
+
+class ArNavigation3D extends StatefulWidget {
+  final double targetLat;
+  final double targetLon;
+  final String targetName;
+  final List<Map<String, dynamic>> routeWaypoints;
+
+  const ArNavigation3D({
     super.key,
-    required this.destLat,
-    required this.destLon,
-    required this.destName,
+    required this.targetLat,
+    required this.targetLon,
+    required this.targetName,
+    required this.routeWaypoints,
   });
 
   @override
-  State<MapNavigationPage> createState() => _MapNavigationPageState();
+  State<ArNavigation3D> createState() => _ArNavigation3DState();
 }
 
-class _MapNavigationPageState extends State<MapNavigationPage> {
-  mp.MapboxMap? map;
-  mp.PolylineAnnotationManager? _routeManager;
-  mp.PolylineAnnotation? _route;
+class _ArNavigation3DState extends State<ArNavigation3D>
+    with TickerProviderStateMixin {
+  // =====================================================
+  // 📸 CÁMARA
+  // =====================================================
+  CameraController? _cameraController;
+  bool _isCameraInitialized = false;
 
-  gl.Position? _currentPos;
-  StreamSubscription<gl.Position>? _posStream;
+  // =====================================================
+  // 🧭 SENSORES Y ORIENTACIÓN (CORREGIDOS)
+  // =====================================================
+  final ArSensorManager _sensorManager = ArSensorManager();
 
-  bool _loading = true;
-  bool _recalculando = false;
-  bool _isDriving = false; // 🚗 Modo por defecto
-  bool _darkMode = true; // 🌙 Estilo oscuro en navegación
+  double _compassHeading = 0;
+  double _pitch = 0;
+  double _roll = 0;
+  double _compassAccuracy = 100;
 
-  String _tiempoEstimado = "";
-  String _distancia = "";
-  List<String> _instrucciones = [];
-  int _paso = 0;
+  // =====================================================
+  // 📍 UBICACIÓN Y NAVEGACIÓN
+  // =====================================================
+  late ArRouteCalculator _routeCalculator;
+  StreamSubscription<Position>? _positionStream;
+
+  double _currentLat = 0;
+  double _currentLon = 0;
+  double _currentAltitude = 0;
+  double _userSpeed = 0;
+
+  int _currentWaypointIndex = 0;
+  double _distanceToNextWaypoint = 0;
+  double _bearingToWaypoint = 0;
+  double _totalDistanceRemaining = 0;
+
+  // =====================================================
+  // 🎯 TARGET ACTUAL (waypoint o destino final)
+  // =====================================================
+  double _currentTargetLat = 0;
+  double _currentTargetLon = 0;
+
+  // =====================================================
+  // 🎨 ANIMACIONES Y UI
+  // =====================================================
+  late AnimationController _arrowPulseController;
+  late Animation<double> _arrowPulseAnimation;
+
+  late AnimationController _arrowRotationController;
+  late Animation<double> _arrowRotationAnimation;
+
+  bool _isNavigationActive = true;
+  bool _hasReachedDestination = false;
+
+  // =====================================================
+  // ⚙️ CONFIGURACIÓN
+  // =====================================================
+  static const double _waypointProximityThreshold = 8.0;
+  static const double _destinationThreshold = 5.0;
+
+  // =====================================================
+  // 🔥 WAYPOINTS CORREGIDOS
+  // =====================================================
+  late List<Map<String, dynamic>> _correctedWaypoints;
 
   @override
   void initState() {
     super.initState();
-    _initLocation();
+    _fixWaypointsOrder();
+    _initializeComponents();
   }
 
-  @override
-  void dispose() {
-    _posStream?.cancel();
-    super.dispose();
+  // =====================================================
+  // 🔥 FIX #1: INVERTIR WAYPOINTS SI VIENEN AL REVÉS
+  // =====================================================
+  void _fixWaypointsOrder() {
+    // Verificar si Mapbox envió waypoints invertidos
+    if (widget.routeWaypoints.isEmpty) {
+      _correctedWaypoints = [];
+      return;
+    }
+
+    // Obtener posición inicial aproximada (usaremos last known)
+    _correctedWaypoints = List.from(widget.routeWaypoints);
+
+    debugPrint('🗺️ Waypoints recibidos: ${_correctedWaypoints.length}');
+    for (int i = 0; i < _correctedWaypoints.length; i++) {
+      debugPrint('  WP[$i]: ${_correctedWaypoints[i]}');
+    }
   }
 
+  // =====================================================
+  // 🚀 INICIALIZACIÓN
+  // =====================================================
+  Future<void> _initializeComponents() async {
+    await _initCamera();
+    _initAnimations();
+    await _initLocationFirst(); // ✅ Obtener ubicación ANTES de sensores
+    _initSensorsFixed(); // ✅ Sensores CORREGIDOS
+    _initRouteCalculator();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      _cameraController = CameraController(
+        cameras.first,
+        ResolutionPreset.high,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+
+      await _cameraController!.initialize();
+      await _cameraController!.setFocusMode(FocusMode.auto);
+      await _cameraController!.setExposureMode(ExposureMode.auto);
+
+      if (mounted) {
+        setState(() => _isCameraInitialized = true);
+      }
+    } catch (e) {
+      debugPrint('❌ Error al inicializar cámara: $e');
+    }
+  }
+
+  void _initAnimations() {
+    _arrowPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+
+    _arrowPulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.15,
+    ).animate(CurvedAnimation(
+      parent: _arrowPulseController,
+      curve: Curves.easeInOut,
+    ));
+
+    _arrowRotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _arrowRotationAnimation = Tween<double>(
+      begin: 0,
+      end: 0,
+    ).animate(CurvedAnimation(
+      parent: _arrowRotationController,
+      curve: Curves.easeOut,
+    ));
+  }
+
+  // =====================================================
+  // 🔥 FIX #2: OBTENER UBICACIÓN INICIAL
+  // =====================================================
+  Future<void> _initLocationFirst() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+      );
+
+      setState(() {
+        _currentLat = position.latitude;
+        _currentLon = position.longitude;
+        _currentAltitude = position.altitude;
+      });
+
+      debugPrint('📍 Ubicación inicial: $_currentLat, $_currentLon');
+
+      // ✅ AHORA SÍ: Verificar orden de waypoints
+      if (_correctedWaypoints.isNotEmpty) {
+        final distToFirst = Geolocator.distanceBetween(
+          _currentLat,
+          _currentLon,
+          _correctedWaypoints.first['lat']!,
+          _correctedWaypoints.first['lon']!,
+        );
+
+        final distToLast = Geolocator.distanceBetween(
+          _currentLat,
+          _currentLon,
+          _correctedWaypoints.last['lat']!,
+          _correctedWaypoints.last['lon']!,
+        );
+
+        debugPrint('🔍 Distancia al primer WP: ${distToFirst.toStringAsFixed(1)}m');
+        debugPrint('🔍 Distancia al último WP: ${distToLast.toStringAsFixed(1)}m');
+
+        // Si el último está más cerca que el primero, invertir
+        if (distToLast < distToFirst) {
+          debugPrint('🔄 INVIRTIENDO WAYPOINTS (estaban al revés)');
+          _correctedWaypoints = _correctedWaypoints.reversed.toList();
+        }
+      }
+
+      // Iniciar tracking continuo
+      _startLocationTracking();
+    } catch (e) {
+      debugPrint('❌ Error obteniendo ubicación: $e');
+    }
+  }
+
+  void _startLocationTracking() {
+    const settings = LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 2,
+    );
+
+    _positionStream = Geolocator.getPositionStream(locationSettings: settings)
+        .listen((position) {
+      if (mounted) {
+        setState(() {
+          _currentLat = position.latitude;
+          _currentLon = position.longitude;
+          _currentAltitude = position.altitude;
+          _userSpeed = position.speed;
+        });
+        _updateNavigation();
+      }
+    });
+  }
+
+  // =====================================================
+  // 🔥 FIX #3: SENSORES CORREGIDOS
+  // =====================================================
+  void _initSensorsFixed() {
+    // ✅ Variables de smoothing CORRECTAS
+    double _filteredHeading = 0;
+    bool _headingInitialized = false;
+    int _lastUpdateTime = 0;
+
+    // ✅ Parámetros conservadores
+    const double alpha = 0.15; // Menos agresivo
+    const int minInterval = 50; // 20 FPS max
+
+    _sensorManager.compassStream.listen((rawHeading) {
+      if (!mounted || rawHeading == null) return;
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastUpdateTime < minInterval) return;
+      _lastUpdateTime = now;
+
+      // ✅ NORMALIZAR ENTRADA (0-360°)
+      double normalizedHeading = rawHeading % 360;
+      if (normalizedHeading < 0) normalizedHeading += 360;
+
+      // ✅ Primera lectura
+      if (!_headingInitialized) {
+        _filteredHeading = normalizedHeading;
+        _headingInitialized = true;
+        setState(() => _compassHeading = _filteredHeading);
+        return;
+      }
+
+      // ✅ SMOOTHING CIRCULAR (para 0°/360° transition)
+      double diff = normalizedHeading - _filteredHeading;
+
+      // Normalizar diferencia a rango [-180, 180]
+      while (diff > 180) diff -= 360;
+      while (diff < -180) diff += 360;
+
+      // Aplicar filtro exponencial
+      _filteredHeading += alpha * diff;
+
+      // Mantener en rango [0, 360)
+      _filteredHeading = _filteredHeading % 360;
+      if (_filteredHeading < 0) _filteredHeading += 360;
+
+      setState(() {
+        _compassHeading = _filteredHeading;
+        _updateArrowRotation();
+      });
+    });
+
+    // Acelerómetro (pitch/roll)
+    _sensorManager.accelerometerStream.listen((event) {
+      if (mounted) {
+        final pitch = _calculatePitch(event.x, event.y, event.z);
+        final roll = _calculateRoll(event.x, event.y, event.z);
+        setState(() {
+          _pitch = pitch;
+          _roll = roll;
+        });
+      }
+    });
+
+    // Accuracy del compass
+    FlutterCompass.events?.listen((event) {
+      if (event.accuracy != null) {
+        setState(() => _compassAccuracy = event.accuracy!.toDouble());
+      }
+    });
+  }
+
+  void _initRouteCalculator() {
+    _routeCalculator = ArRouteCalculator(
+      waypoints: _correctedWaypoints,
+      targetLat: widget.targetLat,
+      targetLon: widget.targetLon,
+    );
+
+    debugPrint('🧮 Route calculator inicializado con ${_correctedWaypoints.length} waypoints');
+  }
+
+  // =====================================================
+  // 🧮 CÁLCULOS TRIGONOMÉTRICOS
+  // =====================================================
+  double _calculatePitch(double x, double y, double z) {
+    return math.atan2(y, math.sqrt(x * x + z * z)) * 180 / math.pi;
+  }
+
+  double _calculateRoll(double x, double y, double z) {
+    return math.atan2(-x, math.sqrt(y * y + z * z)) * 180 / math.pi;
+  }
+
+  // =====================================================
+  // 🗺️ ACTUALIZACIÓN DE NAVEGACIÓN (CORREGIDA)
+  // =====================================================
+  void _updateNavigation() {
+    if (_currentLat == 0 || _currentLon == 0) return;
+
+    // ✅ Determinar target actual
+    if (_currentWaypointIndex < _correctedWaypoints.length) {
+      final currentWaypoint = _correctedWaypoints[_currentWaypointIndex];
+      _currentTargetLat = currentWaypoint['lat']!;
+      _currentTargetLon = currentWaypoint['lon']!;
+    } else {
+      _currentTargetLat = widget.targetLat;
+      _currentTargetLon = widget.targetLon;
+    }
+
+    // ✅ Calcular distancia y bearing AL TARGET ACTUAL
+    _distanceToNextWaypoint = Geolocator.distanceBetween(
+      _currentLat,
+      _currentLon,
+      _currentTargetLat,
+      _currentTargetLon,
+    );
+
+    _bearingToWaypoint = _routeCalculator.calculateBearing(
+      _currentLat,
+      _currentLon,
+      _currentTargetLat,
+      _currentTargetLon,
+    );
+
+    // Distancia total restante
+    _totalDistanceRemaining = _routeCalculator.calculateRemainingDistance(
+      _currentLat,
+      _currentLon,
+      _currentWaypointIndex,
+    );
+
+    // ✅ Avanzar waypoint si estamos cerca
+    if (_currentWaypointIndex < _correctedWaypoints.length &&
+        _distanceToNextWaypoint < _waypointProximityThreshold) {
+      setState(() => _currentWaypointIndex++);
+      _playWaypointSound();
+      debugPrint('✅ Waypoint $_currentWaypointIndex alcanzado');
+    }
+
+    // ✅ Detectar llegada al destino final
+    if (_currentWaypointIndex >= _correctedWaypoints.length) {
+      _checkDestinationReached();
+    }
+
+    _updateArrowRotation();
+  }
+
+  void _checkDestinationReached() {
+    final distanceToDestination = Geolocator.distanceBetween(
+      _currentLat,
+      _currentLon,
+      widget.targetLat,
+      widget.targetLon,
+    );
+
+    debugPrint('🎯 Distancia final: ${distanceToDestination.toStringAsFixed(1)}m');
+
+    if (distanceToDestination < _destinationThreshold &&
+        !_hasReachedDestination) {
+      setState(() {
+        _hasReachedDestination = true;
+        _isNavigationActive = false;
+      });
+      _showDestinationReachedDialog();
+      debugPrint('🎉 ¡DESTINO ALCANZADO!');
+    }
+  }
+
+  // =====================================================
+  // 🔥 FIX #4: RELATIVE ANGLE CORRECTO
+  // =====================================================
+  void _updateArrowRotation() {
+    if (_bearingToWaypoint == 0 && _distanceToNextWaypoint == 0) return;
+
+    // ✅ Calcular ángulo relativo CORRECTAMENTE
+    double relativeAngle = _bearingToWaypoint - _compassHeading;
+
+    // Normalizar a rango [-180, 180]
+    while (relativeAngle > 180) relativeAngle -= 360;
+    while (relativeAngle < -180) relativeAngle += 360;
+
+    _arrowRotationAnimation = Tween<double>(
+      begin: _arrowRotationAnimation.value,
+      end: relativeAngle,
+    ).animate(_arrowRotationController);
+
+    _arrowRotationController.forward(from: 0);
+  }
+
+  // =====================================================
+  // 🎨 UI PRINCIPAL
+  // =====================================================
   @override
   Widget build(BuildContext context) {
+    if (!_isCameraInitialized || _cameraController == null) {
+      return _buildLoadingScreen();
+    }
+
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          mp.MapWidget(
-            onMapCreated: _onMapCreated,
-            styleUri: _darkMode
-                ? mp.MapboxStyles.DARK
-                : mp.MapboxStyles.MAPBOX_STREETS,
+          _buildCameraView(),
+          if (_isNavigationActive) _buildArrowOverlay(),
+          ArHudOverlay(
+            distanceToNext: _distanceToNextWaypoint,
+            totalDistance: _totalDistanceRemaining,
+            currentWaypoint: _currentWaypointIndex + 1,
+            totalWaypoints: _correctedWaypoints.length + 1,
+            targetName: widget.targetName,
+            speed: _userSpeed,
+            compassAccuracy: _compassAccuracy,
+            isCalibrated: _compassAccuracy < 20,
           ),
-
-          // 🧭 Panel de navegación principal
-          if (_instrucciones.isNotEmpty)
-            Positioned(
-              top: 40,
-              left: 15,
-              right: 15,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.35),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // 🚗 / 🚶 icono principal
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.25),
-                        shape: BoxShape.circle,
-                      ),
-                      padding: const EdgeInsets.all(8),
-                      child: Icon(
-                        _isDriving
-                            ? Icons.directions_car
-                            : Icons.directions_walk,
-                        color: Colors.white,
-                        size: 26,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // 📜 Instrucción + tiempo/distancia
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _instrucciones[_paso],
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Row(
-                            children: [
-                              const Icon(Icons.timer,
-                                  size: 16, color: Colors.white70),
-                              const SizedBox(width: 4),
-                              Text(
-                                _tiempoEstimado,
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 13.5),
-                              ),
-                              const SizedBox(width: 12),
-                              const Icon(Icons.place,
-                                  size: 16, color: Colors.white70),
-                              const SizedBox(width: 4),
-                              Text(
-                                _distancia,
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 13.5),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // 🎛️ Botones dentro del panel
-                    Column(
-                      children: [
-                        IconButton(
-                          tooltip: "Cerrar navegación",
-                          onPressed: () {
-                            _posStream?.cancel();
-                            Navigator.pop(context);
-                          },
-                          icon:
-                          const Icon(Icons.close, color: Colors.white, size: 22),
-                        ),
-                        IconButton(
-                          tooltip: "Cambiar modo (Auto / Caminando)",
-                          onPressed: () async {
-                            setState(() {
-                              _isDriving = !_isDriving;
-                              _loading = true;
-                            });
-                            if (_currentPos != null) {
-                              await _dibujarRuta(widget.destLat, widget.destLon);
-                            }
-                            setState(() => _loading = false);
-                          },
-                          icon: Icon(
-                            _isDriving
-                                ? Icons.directions_car
-                                : Icons.directions_walk,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+          _buildControlButtons(),
+          if (_hasReachedDestination) _buildArrivalOverlay(),
+          
+          // ✅ DEBUG MEJORADO
+          Positioned(
+            bottom: 100,
+            left: 10,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              color: Colors.black.withOpacity(0.8),
+              child: Text(
+                '📍 Pos: ${_currentLat.toStringAsFixed(5)}, ${_currentLon.toStringAsFixed(5)}\n'
+                '🎯 Target: ${_currentTargetLat.toStringAsFixed(5)}, ${_currentTargetLon.toStringAsFixed(5)}\n'
+                '📏 Dist: ${_distanceToNextWaypoint.toStringAsFixed(1)}m\n'
+                '🧭 Bear: ${_bearingToWaypoint.toStringAsFixed(1)}°\n'
+                '📱 Head: ${_compassHeading.toStringAsFixed(1)}°\n'
+                '↗️ Rel: ${_arrowRotationAnimation.value.toStringAsFixed(1)}°\n'
+                '📌 WP: $_currentWaypointIndex/${_correctedWaypoints.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
                 ),
               ),
             ),
-
-          if (_loading)
-            const Center(
-              child: CircularProgressIndicator(color: Colors.redAccent),
-            ),
+          ),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // 📍 Inicializa ubicación y seguimiento
-  // ============================================================
-  Future<void> _initLocation() async {
-    await _checkPermisos();
-
-    const settings = gl.LocationSettings(
-      accuracy: gl.LocationAccuracy.best,
-      distanceFilter: 2,
-    );
-
-    _posStream?.cancel();
-    _posStream = gl.Geolocator.getPositionStream(locationSettings: settings)
-        .listen((pos) async {
-      _currentPos = pos;
-      if (map != null) {
-        _centrarCamara(pos.latitude, pos.longitude, heading: pos.heading);
-      }
-      if (_route != null) {
-        await _actualizarProgreso(widget.destLat, widget.destLon);
-      }
-    });
-  }
-
-  // ============================================================
-  // 🗺️ Configura mapa inicial
-  // ============================================================
-  Future<void> _onMapCreated(mp.MapboxMap controller) async {
-    map = controller;
-
-    await map!.location.updateSettings(
-      mp.LocationComponentSettings(
-        enabled: true,
-        pulsingEnabled: true,
-        showAccuracyRing: false,
-      ),
-    );
-
-    _routeManager = await map!.annotations.createPolylineAnnotationManager();
-
-    _currentPos = await gl.Geolocator.getCurrentPosition(
-      desiredAccuracy: gl.LocationAccuracy.best,
-      // timeLimit: const Duration(seconds: 10), // opcional
-    );
-
-    if (_currentPos != null) {
-      await _dibujarRuta(widget.destLat, widget.destLon);
-      await _centrarCamara(_currentPos!.latitude, _currentPos!.longitude);
-    }
-
-    setState(() => _loading = false);
-  }
-
-  // ============================================================
-  // 🎯 Dibuja ruta y obtiene datos
-  // ============================================================
-  Future<void> _dibujarRuta(double destLat, double destLon) async {
-    final start = "${_currentPos!.longitude},${_currentPos!.latitude}";
-    final end = "$destLon,$destLat";
-    final token = dotenv.env['MAPBOX_ACCESS_TOKEN'];
-    final profile = _isDriving ? "driving" : "walking";
-
-    // 🔥 Precisión + calles reales
-    final url = Uri.parse(
-      "https://api.mapbox.com/directions/v5/mapbox/$profile/$start;$end"
-          "?geometries=geojson"
-          "&overview=full"
-          "&steps=true"
-          "&annotations=maxspeed,congestion,distance"
-          "&voice_instructions=false"
-          "&banner_instructions=false"
-          "&access_token=$token",
-    );
-
-    try {
-      final res = await http.get(url);
-      if (res.statusCode != 200) return;
-
-      final data = jsonDecode(res.body);
-      final route = data['routes'][0];
-      final coords = route['geometry']['coordinates'] as List;
-
-      final puntos = coords
-          .map((c) => mp.Position(c[0].toDouble(), c[1].toDouble()))
-          .toList();
-
-      await _routeManager?.deleteAll();
-      _route = await _routeManager!.create(
-        mp.PolylineAnnotationOptions(
-          geometry: mp.LineString(coordinates: puntos),
-          lineColor:
-          _isDriving ? 0xFF00B0FF : 0xFF43A047, // 🔵 Azul para auto / 🟢 Verde para caminar
-          lineWidth: 7.5,
+  Widget _buildCameraView() {
+    return SizedBox.expand(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _cameraController!.value.previewSize!.height,
+          height: _cameraController!.value.previewSize!.width,
+          child: CameraPreview(_cameraController!),
         ),
-      );
-
-      // 📊 Info de viaje
-      final distanciaMetros = route['distance'] ?? 0;
-      final duracionSeg = route['duration'] ?? 0;
-      _distancia = "${(distanciaMetros / 1000).toStringAsFixed(1)} km";
-      _tiempoEstimado = "${(duracionSeg / 60).toStringAsFixed(0)} min aprox";
-
-      // 🧭 Instrucciones
-      final pasos = route['legs'][0]['steps'] as List;
-      setState(() {
-        _instrucciones = pasos.map<String>((s) {
-          final maniobra = s['maneuver']['modifier'] ?? 'seguir';
-          final nombre = s['name'] ?? 'camino';
-          switch (maniobra) {
-            case 'left':
-              return "⬅️ Girar a la izquierda por $nombre";
-            case 'right':
-              return "➡️ Girar a la derecha por $nombre";
-            default:
-              return "⬆️ Seguir por $nombre";
-          }
-        }).toList();
-        _paso = 0;
-        _darkMode = true; // 🌙 Activa modo oscuro al iniciar navegación
-      });
-    } catch (e) {
-      debugPrint("❌ Error al generar ruta: $e");
-    }
-  }
-
-  // ============================================================
-  // 📡 Cámara sigue al usuario tipo Yango
-  // ============================================================
-  Future<void> _centrarCamara(double lat, double lon, {double? heading}) async {
-    await map?.setCamera(
-      mp.CameraOptions(
-        center: mp.Point(coordinates: mp.Position(lon, lat)),
-        zoom: _isDriving ? 17.5 : 16.5,
-        pitch: 60,
-        bearing: heading ?? 0,
       ),
     );
   }
 
-  // ============================================================
-  // 🚶 Actualiza progreso
-  // ============================================================
-  Future<void> _actualizarProgreso(double destLat, double destLon) async {
-    if (_currentPos == null || _route == null || _recalculando) return;
-
-    final distancia = gl.Geolocator.distanceBetween(
-      _currentPos!.latitude,
-      _currentPos!.longitude,
-      destLat,
-      destLon,
-    );
-
-    if (distancia < 5) {
-      _posStream?.cancel();
-      await _routeManager?.deleteAll();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("🎯 Has llegado al destino"),
-            backgroundColor: Colors.green,
+  Widget _buildArrowOverlay() {
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _arrowPulseAnimation,
+        _arrowRotationAnimation,
+      ]),
+      builder: (context, child) {
+        return CustomPaint(
+          painter: ArArrowPainter(
+            compassHeading: _compassHeading,
+            pitch: _pitch,
+            roll: _roll,
+            currentLat: _currentLat,
+            currentLon: _currentLon,
+            targetLat: _currentTargetLat,
+            targetLon: _currentTargetLon,
+            distanceToTarget: _distanceToNextWaypoint,
+            bearingToTarget: _bearingToWaypoint,
+            relativeAngle: _arrowRotationAnimation.value,
+            pulseScale: _arrowPulseAnimation.value,
+            rotationAngle: _arrowRotationAnimation.value,
+            arrowColor: Colors.red,
+            isCalibrated: _compassAccuracy < 20,
           ),
+          size: Size.infinite,
         );
-        Navigator.pop(context);
-      }
-      return;
-    }
-
-    if (!_estasEnRuta()) {
-      _recalculando = true;
-      await _dibujarRuta(destLat, destLon);
-      _recalculando = false;
-    }
+      },
+    );
   }
 
-  bool _estasEnRuta() {
-    if (_route == null || _currentPos == null) return true;
-    const tolerancia = 15.0;
-    for (final p in _route!.geometry.coordinates) {
-      final dist = gl.Geolocator.distanceBetween(
-        _currentPos!.latitude,
-        _currentPos!.longitude,
-        p.lat.toDouble(),
-        p.lng.toDouble(),
-      );
-      if (dist < tolerancia) return true;
-    }
-    return false;
+  Widget _buildControlButtons() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            FloatingActionButton(
+              mini: true,
+              backgroundColor: Colors.black.withOpacity(0.7),
+              onPressed: () => _showExitDialog(),
+              child: const Icon(Icons.close, color: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Future<void> _checkPermisos() async {
-    bool activo = await gl.Geolocator.isLocationServiceEnabled();
-    if (!activo) return Future.error('⚠️ GPS apagado');
+  Widget _buildLoadingScreen() {
+    return const Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.red),
+            SizedBox(height: 20),
+            Text(
+              'Inicializando AR...',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-    gl.LocationPermission permiso = await gl.Geolocator.checkPermission();
-    if (permiso == gl.LocationPermission.denied) {
-      permiso = await gl.Geolocator.requestPermission();
-      if (permiso == gl.LocationPermission.denied) {
-        return Future.error('❌ Permiso de ubicación denegado');
-      }
-    }
-    if (permiso == gl.LocationPermission.deniedForever) {
-      return Future.error('🚫 Permiso denegado permanentemente');
-    }
+  Widget _buildArrivalOverlay() {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Container(
+        margin: const EdgeInsets.only(top: 40, left: 20, right: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFB71C1C).withOpacity(0.95),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "🎯 ¡Llegaste a tu destino!",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.targetName,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pop(context);
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  "OK",
+                  style: TextStyle(
+                    color: Color(0xFFB71C1C),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showExitDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Salir de navegación AR'),
+        content: const Text('¿Deseas finalizar la navegación?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCELAR'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('SALIR', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDestinationReachedDialog() {
+    debugPrint('🎯 Destino alcanzado');
+  }
+
+  void _playWaypointSound() {
+    debugPrint('🎵 Waypoint alcanzado');
+  }
+
+  @override
+  void dispose() {
+    _cameraController?.dispose();
+    _positionStream?.cancel();
+    _sensorManager.dispose();
+    _arrowPulseController.dispose();
+    _arrowRotationController.dispose();
+    super.dispose();
   }
 }
