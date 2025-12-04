@@ -339,6 +339,14 @@ class _ArNavigation3DState extends State<ArNavigation3D>
     );
 
     debugPrint('🧮 Route calculator inicializado con ${_correctedWaypoints.length} waypoints');
+
+    if (_correctedWaypoints.isNotEmpty && _currentLat != 0 && _currentLon != 0) {
+      _currentWaypointIndex = _routeCalculator.findNearestWaypoint(
+        _currentLat,
+        _currentLon,
+      );
+      _updateNavigation();
+    }
   }
 
   // =====================================================
