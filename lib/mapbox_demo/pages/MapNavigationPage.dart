@@ -440,7 +440,7 @@ class _MapNavigationPageState extends State<MapNavigationPage> {
   }
 
   // ============================================================
-  // ⭐⭐⭐ AQUI ESTÁ EL MOTOR: ABRIR EL AR ⭐⭐⭐
+  // ⭐⭐⭐ AQUI ESTÁ EL MOTOR: ABRIR EL AR DESDE AQUI LLAMAMOS AL AR ⭐⭐⭐
   // ============================================================
   void _abrirModoAr() {
     if (_route == null) return;

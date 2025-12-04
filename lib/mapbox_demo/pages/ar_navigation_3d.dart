@@ -6,6 +6,7 @@
 // 2. Waypoints validados y en orden correcto
 // 3. Cálculos de distancia/bearing funcionando
 // 4. RelativeAngle calculado correctamente
+// 5. aqui trabajamos para lo que es el AR y lo llaman desde MapNaviationPage.dart
 // =====================================================
 
 import 'dart:async';
